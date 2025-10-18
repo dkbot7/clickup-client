@@ -5,6 +5,7 @@ from rich import print
 from typing import Optional, List, Dict, Any, Union
 
 from src.clickup_api.helpers.date_utils import fuzzy_time_to_unix, fuzzy_time_to_seconds
+from src.clickup_api.helpers.translation import translate_params
 
 load_dotenv()
 
@@ -245,60 +246,121 @@ class KaloiClickUpClient:
         """
         Lista tasks de uma lista com filtros opcionais.
 
+        Aceita filtros em PORTUGUÊS ou INGLÊS!
+
         Args:
             list_id: ID da lista
-            **filters: Filtros (archived, page, order_by, etc.)
+            **filters: Filtros opcionais
+
+        Filtros aceitos (PT ou EN):
+            - archived/arquivada: true/false
+            - page/página: Número da página
+            - order_by/ordenar_por: Campo para ordenação
+            - include_closed/incluir_fechadas: true/false
+            - subtasks/incluir_subtasks: true/false
+
+        Exemplos:
+            # Português
+            tasks = client.get_tasks(
+                "list_id",
+                arquivada=False,
+                página=0
+            )
+
+            # Inglês
+            tasks = client.get_tasks(
+                "list_id",
+                archived=False,
+                page=0
+            )
 
         Returns:
             dict com lista de tasks
         """
-        return self._request("GET", f"list/{list_id}/task", params=filters)
+        # Traduz filtros PT → EN
+        filters_translated = translate_params(filters, to_english=True)
+        return self._request("GET", f"list/{list_id}/task", params=filters_translated)
 
     def create_task(
         self,
         list_id: str,
-        name: str,
+        name: Optional[str] = None,
         description: Optional[str] = None,
         **kwargs
     ) -> Optional[Dict]:
         """
         Cria uma nova task com feedback visual.
 
+        Aceita parâmetros em PORTUGUÊS ou INGLÊS!
+
         Args:
             list_id: ID da lista
-            name: Nome/título da task
-            description: Descrição opcional
-            **kwargs: Outros parâmetros (priority, due_date, assignees, status, tags)
+            name/nome: Nome/título da task
+            description/descrição: Descrição opcional
+            **kwargs: Outros parâmetros
 
-        Suporta datas em linguagem natural para due_date e start_date:
-            - "tomorrow", "amanhã"
-            - "next week", "próxima semana"
-            - "december 1st", "1 de dezembro"
+        Parâmetros aceitos (PT ou EN):
+            - priority/prioridade: "urgente"/"alta"/"normal"/"baixa" ou 1/2/3/4
+            - status: "fazer"/"em progresso"/"concluído" ou "to do"/"in progress"/"complete"
+            - due_date/data_vencimento: "amanhã", "próxima segunda", "tomorrow", "next monday"
+            - start_date/data_inicio: Mesmos formatos de data
+            - assignees/responsáveis: Lista de IDs de usuários
+            - tags/etiquetas: Lista de tags
+
+        Suporta datas em linguagem natural:
+            - PT: "amanhã", "próxima semana", "próxima segunda", "1 de dezembro"
+            - EN: "tomorrow", "next week", "next monday", "december 1st"
             - ISO 8601: "2024-12-01T00:00:00Z"
             - Unix timestamp: 1701388800000
+
+        Exemplos:
+            # Português
+            client.create_task(
+                list_id="123",
+                nome="Reunião importante",
+                prioridade="alta",
+                status="em progresso",
+                data_vencimento="próxima segunda"
+            )
+
+            # Inglês
+            client.create_task(
+                list_id="123",
+                name="Important meeting",
+                priority="high",
+                status="in progress",
+                due_date="next monday"
+            )
 
         Returns:
             dict com dados da task criada
         """
-        payload = {"name": name}
+        # Monta payload inicial
+        payload = {}
+
+        # Aceita "nome" em português
+        if name:
+            payload["name"] = name
+        elif "nome" in kwargs:
+            payload["name"] = kwargs.pop("nome")
 
         if description:
             payload["description"] = description
+        elif "descrição" in kwargs or "descricao" in kwargs:
+            payload["description"] = kwargs.pop("descrição", kwargs.pop("descricao", None))
+
+        # Traduz parâmetros PT → EN
+        kwargs_translated = translate_params(kwargs, to_english=True)
 
         # Converte datas em linguagem natural para Unix timestamp
-        if "due_date" in kwargs and isinstance(kwargs["due_date"], str):
-            try:
-                kwargs["due_date"] = fuzzy_time_to_unix(kwargs["due_date"])
-            except Exception as e:
-                print(f"[yellow]⚠ Aviso: Não foi possível converter due_date: {e}[/yellow]")
+        for date_field in ["due_date", "start_date", "data_vencimento", "data_inicio"]:
+            if date_field in kwargs_translated and isinstance(kwargs_translated[date_field], str):
+                try:
+                    kwargs_translated[date_field] = fuzzy_time_to_unix(kwargs_translated[date_field])
+                except Exception as e:
+                    print(f"[yellow]⚠ Aviso: Não foi possível converter {date_field}: {e}[/yellow]")
 
-        if "start_date" in kwargs and isinstance(kwargs["start_date"], str):
-            try:
-                kwargs["start_date"] = fuzzy_time_to_unix(kwargs["start_date"])
-            except Exception as e:
-                print(f"[yellow]⚠ Aviso: Não foi possível converter start_date: {e}[/yellow]")
-
-        payload.update(kwargs)
+        payload.update(kwargs_translated)
 
         task = self._request("POST", f"list/{list_id}/task", json=payload)
 
@@ -314,14 +376,50 @@ class KaloiClickUpClient:
         """
         Atualiza uma task existente.
 
+        Aceita parâmetros em PORTUGUÊS ou INGLÊS!
+
         Args:
             task_id: ID da task
-            **updates: Campos a atualizar (name, description, status, priority, etc.)
+            **updates: Campos a atualizar
+
+        Parâmetros aceitos (PT ou EN):
+            - name/nome: Novo nome
+            - description/descrição: Nova descrição
+            - status: "fazer"/"em progresso"/"concluído" ou "to do"/"in progress"/"complete"
+            - priority/prioridade: "urgente"/"alta"/"normal"/"baixa" ou 1/2/3/4
+            - due_date/data_vencimento: Datas em linguagem natural
+            - start_date/data_inicio: Datas em linguagem natural
+
+        Exemplos:
+            # Português
+            client.update_task(
+                "task_id",
+                status="concluído",
+                prioridade="baixa"
+            )
+
+            # Inglês
+            client.update_task(
+                "task_id",
+                status="complete",
+                priority="low"
+            )
 
         Returns:
             dict com dados da task atualizada
         """
-        task = self._request("PUT", f"task/{task_id}", json=updates)
+        # Traduz parâmetros PT → EN
+        updates_translated = translate_params(updates, to_english=True)
+
+        # Converte datas em linguagem natural
+        for date_field in ["due_date", "start_date"]:
+            if date_field in updates_translated and isinstance(updates_translated[date_field], str):
+                try:
+                    updates_translated[date_field] = fuzzy_time_to_unix(updates_translated[date_field])
+                except Exception as e:
+                    print(f"[yellow]⚠ Aviso: Não foi possível converter {date_field}: {e}[/yellow]")
+
+        task = self._request("PUT", f"task/{task_id}", json=updates_translated)
 
         if task:
             print(f"[green]✓ Task atualizada![/green]")
