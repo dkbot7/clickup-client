@@ -4,8 +4,10 @@ Cliente Python moderno e completo para integração com a API v2 do ClickUp.
 
 ## 🌟 Características
 
+- ✅ **100% Bilíngue (PT/EN)** - Use parâmetros em português ou inglês!
 - ✅ **100% compatível com Python 3.13**
 - ✅ **Datas em linguagem natural** (português e inglês)
+- ✅ **Tradução automática** PT → EN antes de enviar à API
 - ✅ **Output formatado** com Rich
 - ✅ **Type hints completos**
 - ✅ **Exception handling robusto**
@@ -51,6 +53,91 @@ client.validate_auth()
 # Obter informações do usuário
 client.get_user_info()
 ```
+
+### 🌐 Suporte Bilíngue (PT/EN)
+
+**O cliente aceita parâmetros 100% em PORTUGUÊS ou INGLÊS!**
+
+A tradução é feita automaticamente antes de enviar à API.
+
+#### Exemplo em Português
+
+```python
+#  Use português naturalmente!
+task = client.create_task(
+    list_id="123456789",
+    nome="Reunião importante",           # ← português!
+    descrição="Discutir projeto Q1",     # ← português!
+    prioridade="alta",                    # ← português!
+    status="em progresso",                # ← português!
+    data_vencimento="próxima segunda"     # ← português + linguagem natural!
+)
+
+# Atualizar task em português
+client.update_task(
+    "task_id",
+    status="concluído",
+    prioridade="baixa"
+)
+
+# Buscar tasks com filtros em português
+tasks = client.get_tasks(
+    "list_id",
+    arquivada=False,
+    página=0
+)
+```
+
+#### Exemplo em Inglês
+
+```python
+# English works too!
+task = client.create_task(
+    list_id="123456789",
+    name="Important meeting",
+    description="Discuss Q1 project",
+    priority="high",                      # or priority=2
+    status="in progress",
+    due_date="next monday"                # natural language!
+)
+
+# Update task in English
+client.update_task(
+    "task_id",
+    status="complete",
+    priority="low"
+)
+
+# Get tasks with English filters
+tasks = client.get_tasks(
+    "list_id",
+    archived=False,
+    page=0
+)
+```
+
+#### Tabela de Tradução Automática
+
+| Português | Inglês | Valor API |
+|-----------|--------|-----------|
+| **Prioridade** |
+| urgente | urgent | 1 |
+| alta | high | 2 |
+| normal | normal | 3 |
+| baixa | low | 4 |
+| **Status** |
+| fazer | to do | "to do" |
+| em progresso | in progress | "in progress" |
+| em revisão | in review | "in review" |
+| concluído | complete | "complete" |
+| **Parâmetros** |
+| nome | name | name |
+| descrição | description | description |
+| prioridade | priority | priority |
+| data_vencimento | due_date | due_date |
+| data_inicio | start_date | start_date |
+| responsáveis | assignees | assignees |
+| etiquetas | tags | tags |
 
 ### Gerenciamento de Tasks
 
@@ -279,21 +366,23 @@ fuzzy_time_to_seconds("1 day")        # 86400
 
 ```
 clickup-client/
-├── .env                    # Credenciais (não versionado)
-├── .env.example           # Template de configuração
-├── .gitignore            # Arquivos ignorados
-├── README.md             # Esta documentação
-├── requirements.txt      # Dependências Python
-├── main.py              # Script de teste principal
-├── test_fuzzy_dates.py  # Teste de datas naturais
+├── .env                      # Credenciais (não versionado)
+├── .env.example             # Template de configuração
+├── .gitignore              # Arquivos ignorados
+├── README.md               # Esta documentação
+├── requirements.txt        # Dependências Python
+├── main.py                # Script de teste principal
+├── test_fuzzy_dates.py    # Teste de datas naturais
+├── demo_bilingual.py      # Demonstração bilíngue (PT/EN)
 │
 └── src/
     └── clickup_api/
         ├── __init__.py
-        ├── client.py    # Cliente principal
+        ├── client.py      # Cliente principal (bilíngue)
         └── helpers/
             ├── __init__.py
-            └── date_utils.py  # Utilitários de data
+            ├── date_utils.py      # Parsing de datas naturais
+            └── translation.py     # Tradução PT ↔ EN
 ```
 
 ## 🤝 Contribuindo

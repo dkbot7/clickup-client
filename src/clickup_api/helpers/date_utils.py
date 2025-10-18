@@ -7,8 +7,46 @@ Suporta datas em português e inglês.
 """
 
 import dateparser
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Union, Optional
+import re
+
+
+def _get_next_weekday(target_day: str) -> datetime:
+    """
+    Retorna a próxima ocorrência de um dia da semana.
+
+    Args:
+        target_day: Nome do dia da semana em inglês (monday, tuesday, etc.)
+
+    Returns:
+        datetime da próxima ocorrência desse dia
+    """
+    weekdays = {
+        'monday': 0,
+        'tuesday': 1,
+        'wednesday': 2,
+        'thursday': 3,
+        'friday': 4,
+        'saturday': 5,
+        'sunday': 6
+    }
+
+    if target_day.lower() not in weekdays:
+        return None
+
+    today = datetime.now()
+    target_weekday = weekdays[target_day.lower()]
+    current_weekday = today.weekday()
+
+    # Calcula quantos dias até o próximo target_day
+    days_ahead = target_weekday - current_weekday
+    if days_ahead <= 0:  # Se já passou esta semana, vai para próxima
+        days_ahead += 7
+
+    next_date = today + timedelta(days=days_ahead)
+    # Retorna com hora 00:00:00
+    return next_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def fuzzy_time_to_unix(text: Union[str, int]) -> int:
@@ -21,8 +59,8 @@ def fuzzy_time_to_unix(text: Union[str, int]) -> int:
         text: Data em formato legível ou timestamp Unix
 
     Suporta:
-        - Linguagem natural: "tomorrow", "next week", "december 1st"
-        - Português: "amanhã", "próxima semana", "1 de dezembro"
+        - Linguagem natural: "tomorrow", "next week", "december 1st", "next monday"
+        - Português: "amanhã", "próxima semana", "1 de dezembro", "próxima segunda"
         - ISO 8601: "2024-12-01T00:00:00Z"
         - Timestamp Unix (retorna como está se já for número)
 
@@ -36,11 +74,11 @@ def fuzzy_time_to_unix(text: Union[str, int]) -> int:
         >>> fuzzy_time_to_unix("amanhã")
         1701475200000
 
-        >>> fuzzy_time_to_unix("next friday")
+        >>> fuzzy_time_to_unix("next monday")
         1701993600000
 
-        >>> fuzzy_time_to_unix("2024-12-01")
-        1701388800000
+        >>> fuzzy_time_to_unix("próxima segunda")
+        1701993600000
     """
     # Se já é um timestamp (número ou string numérica)
     try:
@@ -53,20 +91,71 @@ def fuzzy_time_to_unix(text: Union[str, int]) -> int:
     except (ValueError, TypeError):
         pass
 
-    # Parse com dateparser (suporta português e inglês)
+    # Traduz termos em português para inglês
+    text_str = str(text).lower().strip()
+
+    # Mapeamento de traduções PT -> EN
+    translations = {
+        # Dias da semana
+        'segunda': 'monday',
+        'segunda-feira': 'monday',
+        'segunda feira': 'monday',
+        'terça': 'tuesday',
+        'terça-feira': 'tuesday',
+        'terça feira': 'tuesday',
+        'quarta': 'wednesday',
+        'quarta-feira': 'wednesday',
+        'quarta feira': 'wednesday',
+        'quinta': 'thursday',
+        'quinta-feira': 'thursday',
+        'quinta feira': 'thursday',
+        'sexta': 'friday',
+        'sexta-feira': 'friday',
+        'sexta feira': 'friday',
+        'sábado': 'saturday',
+        'sabado': 'saturday',
+        'domingo': 'sunday',
+
+        # Temporais
+        'próxima': 'next',
+        'proxima': 'next',
+        'próximo': 'next',
+        'proximo': 'next',
+        'que vem': 'next',
+        'amanhã': 'tomorrow',
+        'amanha': 'tomorrow',
+        'hoje': 'today',
+        'ontem': 'yesterday',
+    }
+
+    # Aplica traduções
+    for pt, en in translations.items():
+        text_str = text_str.replace(pt, en)
+
+    # Detecta padrões "next [weekday]" e usa função customizada
+    next_weekday_pattern = r'\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b'
+    match = re.search(next_weekday_pattern, text_str)
+    if match:
+        weekday = match.group(1)
+        dt = _get_next_weekday(weekday)
+        if dt:
+            return int(dt.timestamp() * 1000)
+
+    # Parse com dateparser
     dt = dateparser.parse(
-        str(text),
-        languages=['pt', 'en'],
+        text_str,
+        languages=['en'],  # Usa apenas inglês após tradução
         settings={
-            'PREFER_DATES_FROM': 'future',  # Prefer datas futuras
-            'RETURN_AS_TIMEZONE_AWARE': False
+            'PREFER_DATES_FROM': 'future',
+            'RETURN_AS_TIMEZONE_AWARE': False,
+            'RELATIVE_BASE': datetime.now()
         }
     )
 
     if dt is None:
         raise ValueError(
             f"Não foi possível converter '{text}' para data. "
-            f"Formatos suportados: 'amanhã', 'tomorrow', '2024-12-01', etc."
+            f"Formatos suportados: 'amanhã', 'próxima segunda', 'tomorrow', 'next monday', '2024-12-01', etc."
         )
 
     # Converte para Unix timestamp em milissegundos
