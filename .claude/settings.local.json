@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip install -r requirements.txt)",
+      "Bash(python3 -m pip install -r requirements.txt)",
+      "Bash(python main.py)",
+      "Bash(where python)",
+      "Bash(\"C:\\Users\\Vaio\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m ensurepip --default-pip)",
+      "WebFetch(domain:clickup.com)",
+      "WebFetch(domain:developer.clickup.com)",
+      "WebSearch",
+      "Bash(curl -H \"Authorization: 9SWLMBXNGK9JCKI3PMIR3920FG8CS412BOZXC458JBVAS1GU8QHKWYPTBMRGO9F2\" https://api.clickup.com/api/v2/user)",
+      "WebFetch(domain:github.com)",
+      "Bash(git clone https://github.com/Imzachjohnson/clickupython.git temp_clickupython)",
+      "Bash(python -m pip install clickupython)",
+      "Bash(python -m pip install setuptools --upgrade)",
+      "Bash(python -m pip install pydantic requests)",
+      "Bash(python -m pip install pydantic==1.8.2 typing-extensions==3.10.0.2 timefhuman==0.0.5 word2number==1.1)",
+      "Bash(git clone --depth 1 https://github.com/Imzachjohnson/clickupython.git temp_analysis)",
+      "Bash(python -m pip install dateparser)",
+      "Bash(python test_fuzzy_dates.py)",
+      "Bash(git init)",
+      "Bash(git add .)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
