@@ -13,6 +13,29 @@ Cliente Python moderno e completo para integração com a API v2 do ClickUp.
 - ✅ **Exception handling robusto**
 - ✅ **Rate limiting automático**
 - ✅ **Sem dependências problemáticas** (sem Pendulum)
+- ✅ **32+ métodos avançados** - Custom Fields, Time Tracking, Goals, Webhooks e mais!
+- ✅ **Helpers especializados** - Cálculos de tempo, formatação, análises
+
+## 🚀 Funcionalidades Implementadas
+
+### Funcionalidades Básicas
+- ✅ **Autenticação e Validação** - Token management e user info
+- ✅ **Workspaces/Teams** - Gerenciamento de workspaces
+- ✅ **Spaces** - Organização de spaces
+- ✅ **Folders** - Estrutura de folders
+- ✅ **Lists** - Gerenciamento de lists
+- ✅ **Tasks** - CRUD completo de tasks
+- ✅ **Comments** - Comentários em tasks
+
+### Funcionalidades Avançadas (A-H)
+- ✅ **A. Custom Fields** - 16 tipos de campos personalizados
+- ✅ **B. Time Tracking** - Timers e registros manuais de tempo
+- ✅ **C. Attachments** - Upload de arquivos (até 1GB)
+- ✅ **D. Checklists** - Listas de verificação em tasks
+- ✅ **E. Goals** - Objetivos e metas quantitativas
+- ✅ **F. Members** - Gerenciamento de membros e assignees
+- ✅ **G. Webhooks** - Eventos em tempo real com HMAC SHA256
+- ✅ **H. Views** - Visualizações customizadas (list, board, calendar, gantt)
 
 ## 📦 Instalação
 
@@ -303,9 +326,155 @@ comment = client.create_task_comment(
 - `get_task_comments(task_id)` - Lista comentários
 - `create_task_comment(task_id, text)` - Cria comentário
 
+### A. Custom Fields (Campos Personalizados)
+- `get_custom_fields(list_id)` - Lista custom fields de uma list
+- `set_custom_field(task_id, field_id, value, **kwargs)` - Define valor de um custom field
+- `set_multiple_custom_fields(task_id, fields)` - Define múltiplos custom fields de uma vez
+
+### B. Time Tracking (Rastreamento de Tempo)
+- `create_time_entry(team_id, duration, task_id, **kwargs)` - Cria registro manual de tempo
+- `start_timer(team_id, task_id, **kwargs)` - Inicia timer em tempo real
+- `stop_timer(team_id)` - Para timer ativo
+- `get_running_timer(team_id)` - Busca timer ativo atual
+- `get_time_entries(team_id, **filters)` - Lista time entries com filtros
+- `update_time_entry(team_id, entry_id, **updates)` - Atualiza time entry existente
+- `delete_time_entry(team_id, entry_id)` - Deleta time entry
+
+### C. Attachments (Anexos)
+- `upload_attachment(task_id, file_path)` - Faz upload de arquivo para task
+
+### D. Checklists (Listas de Verificação)
+- `create_checklist(task_id, name)` - Cria checklist em uma task
+- `add_checklist_item(checklist_id, name, **kwargs)` - Adiciona item ao checklist
+- `complete_checklist_item(checklist_id, item_id)` - Marca item como concluído
+- `delete_checklist(checklist_id)` - Deleta checklist
+
+### E. Goals (Objetivos e Metas)
+- `create_goal(name, due_date, **kwargs)` - Cria novo goal
+- `get_goals(team_id, **filters)` - Lista goals do workspace
+- `get_goal(goal_id)` - Busca goal específico
+
+### F. Members (Gerenciamento de Membros)
+- `get_list_members(list_id)` - Lista membros de uma list
+- `get_task_members(task_id)` - Lista membros de uma task
+- `add_assignees(task_id, assignees)` - Adiciona assignees a uma task
+- `remove_assignees(task_id, assignees)` - Remove assignees de uma task
+
+### G. Webhooks (Notificações em Tempo Real)
+- `create_webhook(endpoint_url, events, **kwargs)` - Cria webhook
+- `get_webhooks(team_id)` - Lista webhooks ativos
+- `delete_webhook(webhook_id)` - Deleta webhook
+
+### H. Views (Visualizações Customizadas)
+- `get_list_views(list_id)` - Lista views de uma list
+- `get_view(view_id)` - Busca view específica
+- `get_view_tasks(view_id, **filters)` - Lista tasks de uma view
+- `update_view(view_id, **updates)` - Atualiza configurações de uma view
+
+## 💡 Exemplos de Uso Avançado
+
+### Custom Fields
+
+```python
+# Listar custom fields disponíveis
+fields = client.get_custom_fields("list_id")
+
+# Setar um custom field
+client.set_custom_field(
+    "task_id",
+    "field_id",
+    "Valor do campo"
+)
+
+# Setar múltiplos custom fields de uma vez
+client.set_multiple_custom_fields("task_id", {
+    "field_id_1": "Valor 1",
+    "field_id_2": 42,
+    "field_id_3": True
+})
+```
+
+### Time Tracking
+
+```python
+# Criar registro manual de tempo (2 horas)
+client.create_time_entry(
+    duration=7200000,  # 2 horas em milissegundos
+    task_id="task_id",
+    description="Desenvolvimento de feature",
+    billable=True
+)
+
+# Iniciar timer em tempo real
+client.start_timer("task_id", description="Trabalhando na task")
+
+# Verificar timer ativo
+timer = client.get_running_timer()
+
+# Parar timer
+client.stop_timer()
+
+# Buscar time entries com filtros
+entries = client.get_time_entries(
+    start_date=1704067200000,  # Unix timestamp ms
+    end_date=1735689600000,
+    assignee="user_id"
+)
+```
+
+### Checklists
+
+```python
+# Criar checklist
+checklist = client.create_checklist("task_id", "Deploy Process")
+
+# Adicionar items
+client.add_checklist_item(
+    checklist["checklist"]["id"],
+    "Rodar testes",
+    assignee=123456
+)
+
+# Marcar item como concluído
+client.complete_checklist_item(checklist_id, item_id)
+```
+
+### Goals
+
+```python
+# Criar goal com data de vencimento
+goal = client.create_goal(
+    name="Aumentar Vendas Q1",
+    due_date=1735689600000,  # Unix timestamp ms
+    description="Meta trimestral de vendas",
+    multiple_owners=True,
+    owners=[123456, 789012]
+)
+
+# Listar goals
+goals = client.get_goals(include_completed=False)
+```
+
+### Webhooks
+
+```python
+# Criar webhook para receber eventos
+webhook = client.create_webhook(
+    endpoint_url="https://meu-servidor.com/webhook",
+    events=["taskCreated", "taskUpdated", "taskDeleted"],
+    space_id="space_id"
+)
+
+# Listar webhooks ativos
+webhooks = client.get_webhooks()
+
+# Deletar webhook
+client.delete_webhook("webhook_id")
+```
+
 ## 🧪 Testes
 
-Execute o script de teste incluído:
+Execute os scripts de teste incluídos:
 
 ```bash
 # Teste de autenticação
@@ -313,6 +482,9 @@ python main.py
 
 # Teste de datas em linguagem natural
 python test_fuzzy_dates.py
+
+# Teste completo de todas as funcionalidades (A-H)
+python dkbot-client/examples/test_all_features.py
 ```
 
 ## 📋 Datas Suportadas
@@ -375,14 +547,40 @@ clickup-client/
 ├── test_fuzzy_dates.py    # Teste de datas naturais
 ├── demo_bilingual.py      # Demonstração bilíngue (PT/EN)
 │
-└── src/
-    └── clickup_api/
-        ├── __init__.py
-        ├── client.py      # Cliente principal (bilíngue)
-        └── helpers/
-            ├── __init__.py
-            ├── date_utils.py      # Parsing de datas naturais
-            └── translation.py     # Tradução PT ↔ EN
+├── src/
+│   └── clickup_api/
+│       ├── __init__.py
+│       ├── client.py      # Cliente principal (bilíngue) - 1200+ linhas
+│       └── helpers/
+│           ├── __init__.py
+│           ├── date_utils.py      # Parsing de datas naturais
+│           └── translation.py     # Tradução PT ↔ EN
+│
+├── dkbot-client/          # 🆕 Novo pacote com funcionalidades A-H
+│   ├── src/
+│   │   └── dkbot/
+│   │       ├── client.py  # Cliente estendido com funcionalidades A-H
+│   │       ├── templates/ # Templates para automação
+│   │       ├── validators/# Validadores de dados
+│   │       └── helpers/
+│   │           ├── custom_fields.py    # 🆕 Helpers de Custom Fields
+│   │           ├── time_tracking.py    # 🆕 Helpers de Time Tracking
+│   │           ├── date_utils.py       # Parsing de datas
+│   │           └── translation.py      # Tradução PT ↔ EN
+│   ├── docs/              # Documentação das funcionalidades
+│   └── examples/
+│       └── test_all_features.py  # 🆕 Teste completo A-H
+│
+└── docs/                  # Documentação técnica detalhada
+    ├── README.md         # Índice de documentação
+    ├── CUSTOM_FIELDS_SUMMARY.md      # A. Custom Fields
+    ├── CUSTOM_FIELDS_RESEARCH.md
+    ├── CUSTOM_FIELDS_EXAMPLES.md
+    ├── TIME_TRACKING_SUMMARY.md      # B. Time Tracking
+    ├── TIME_TRACKING_RESEARCH.md
+    ├── TIME_TRACKING_EXAMPLES.md
+    ├── ADVANCED_FEATURES_SUMMARY.md  # C-H. Funcionalidades Avançadas
+    └── ADVANCED_FEATURES_RESEARCH.md
 ```
 
 ## 🤝 Contribuindo
@@ -403,6 +601,31 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 
 - **Dani Kaloi** - [@Danizk](https://github.com/Danizk)
 - **Sistema Kaloi** - Arquitetura híbrida de IAs
+
+## 📚 Documentação Técnica
+
+O projeto inclui documentação técnica detalhada sobre funcionalidades avançadas:
+
+- **[docs/README.md](docs/README.md)** - Índice geral de documentação
+- **[docs/CUSTOM_FIELDS_SUMMARY.md](docs/CUSTOM_FIELDS_SUMMARY.md)** - Resumo executivo sobre Custom Fields
+- **[docs/CUSTOM_FIELDS_RESEARCH.md](docs/CUSTOM_FIELDS_RESEARCH.md)** - Pesquisa técnica completa
+- **[docs/CUSTOM_FIELDS_EXAMPLES.md](docs/CUSTOM_FIELDS_EXAMPLES.md)** - Exemplos práticos de uso
+
+### 🔬 Pesquisas Realizadas
+
+| Funcionalidade | Status | Documentação |
+|----------------|--------|--------------|
+| Custom Fields | ✅ Concluída | [Ver docs](docs/CUSTOM_FIELDS_SUMMARY.md) |
+| Time Tracking | ✅ Concluída | [Ver docs](docs/TIME_TRACKING_SUMMARY.md) |
+| **Avançadas (C-H)** | **✅ Concluída** | **[Ver docs](docs/ADVANCED_FEATURES_SUMMARY.md)** |
+
+**Funcionalidades Avançadas incluem:**
+- C. Attachments (Upload de arquivos)
+- D. Checklists (Listas de verificação)
+- E. Goals (Metas e objetivos)
+- F. Members (Gerenciamento de membros)
+- G. Webhooks (Eventos em tempo real)
+- H. Views (Visualizações customizadas)
 
 ## 🔗 Links Úteis
 
