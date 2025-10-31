@@ -42,12 +42,12 @@ Cliente Python moderno e completo para integração com a API v2 do ClickUp.
 - ✅ **G. Webhooks** - Eventos em tempo real com HMAC SHA256
 - ✅ **H. Views** - Visualizações customizadas (list, board, calendar, gantt)
 
-### 🤖 Automações (Python + WhatsApp + GitHub Actions)
+### 🤖 Automações (Nativas do ClickUp)
 - ✅ **Alertas de Contas a Pagar** - Notificações 7/3/1 dia antes + vencidos
-- ✅ **Lembretes WhatsApp** - Reuniões comerciais (24h e 1h antes)
-- ✅ **Relatórios Semanais** - Produtividade e métricas automáticas
-- ✅ **CI/CD com GitHub Actions** - Deploy e execução automática
-- ✅ **Integração WhatsApp Business** - Via Interakt BSP oficial
+- ✅ **Lembretes de Reuniões** - 24h e 1h antes via email + in-app
+- ✅ **Relatórios Semanais** - Task automática toda segunda-feira
+- ✅ **100% Nativo** - Sem código, sem custos adicionais
+- ✅ **R$ 0/mês** - Incluído no plano atual do ClickUp
 
 ## 📦 Instalação
 
@@ -605,80 +605,63 @@ fuzzy_time_to_seconds("1 day")        # 86400
 - **rich** - Output formatado
 - **dateparser** - Parsing de datas naturais
 
-## 🤖 Automações
+## 🤖 Automações Nativas do ClickUp
 
-Este projeto inclui um sistema completo de automações usando **Python + WhatsApp Business API + GitHub Actions**.
+**Decisão Final:** Usar 100% automações nativas do ClickUp (sem código, R$ 0/mês)
 
-### 🎯 Funcionalidades
+### 🎯 Funcionalidades Implementadas
 
-#### 1. Alertas de Contas a Pagar
-**Arquivo:** `automation/daily_alerts.py`
-**Execução:** Diariamente às 9h (GitHub Actions)
+#### 1. Alertas de Contas a Pagar (4 automações)
+**Interface:** ClickUp Automations (nativo)
+**Custo:** R$ 0
 
-- **7 dias antes:** Tag `vencendo-em-breve` + comentário
-- **3 dias antes:** Tag `urgente` + prioridade alta
-- **1 dia antes:** Tag `muito-urgente` + prioridade urgente
-- **Vencido:** Tag `atrasado` + criar task de revisão
+- **7 dias antes:** Tag `vencendo-em-breve` + comentário + notificação
+- **3 dias antes:** Tag `urgente` + prioridade alta + notificação
+- **1 dia antes:** Tag `muito-urgente` + prioridade urgente + notificação
+- **Vencido:** Tag `atrasado` + criar subtask de revisão
 
-#### 2. Lembretes WhatsApp para Reuniões
-**Arquivo:** `automation/commercial_reminders.py`
-**Execução:** A cada 1 hora (GitHub Actions)
+#### 2. Lembretes de Reuniões (2 automações)
+**Interface:** ClickUp Automations (nativo)
+**Custo:** R$ 0
 
-- **24h antes:** Mensagem amigável com data/hora/link
-- **1h antes:** Mensagem urgente
-- **Anti-duplicação:** Sistema de tags
+- **24h antes:** Tag `lembrete-24h` + comentário + notificação email
+- **1h antes:** Tag `lembrete-1h` + comentário urgente + notificação
 
-#### 3. Relatórios Semanais
-**Arquivo:** `automation/weekly_reports.py`
-**Execução:** Segunda-feira às 9h (GitHub Actions)
+#### 3. Relatórios Semanais (1 automação)
+**Interface:** ClickUp Automations (nativo)
+**Custo:** R$ 0
 
-- Contas vencendo (próximos 7 dias)
-- Reuniões agendadas
-- Tasks criadas vs concluídas
-- Taxa de conclusão por Space
-- Salva relatório como task no ClickUp
+- **Toda segunda-feira 9h:** Criar task "Relatório Semanal" com checklist
 
-### 💰 Custo das Automações
+### 💰 Custo Total
 
 | Item | Custo Mensal |
 |------|--------------|
-| MEI (CNPJ obrigatório) | R$ 70 |
-| Interakt (WhatsApp BSP) | R$ 50-100 |
-| WhatsApp API | R$ 0 (1.000 conversas grátis) |
-| GitHub Actions | R$ 0 (2.000 min grátis) |
-| **TOTAL** | **R$ 123-173** |
+| ClickUp Automations | R$ 0 (incluído no plano) |
+| **TOTAL** | **R$ 0** |
 
-### 🚀 Como Usar
+### ✅ Vantagens vs Python/WhatsApp
 
-1. **Configure variáveis de ambiente:**
-```bash
-cp .env.example .env
-# Edite .env com suas credenciais
-```
+| Aspecto | Nativo ClickUp | Python + WhatsApp |
+|---------|----------------|-------------------|
+| Custo | R$ 0 | R$ 123-173 |
+| Setup | 30 min | 3-5 dias |
+| Código | 0 linhas | 1.100 linhas |
+| Pré-requisitos | Nenhum | MEI + Interakt |
+| Manutenção | Zero | Média |
 
-2. **Adicione secrets no GitHub:**
-- `CLICKUP_API_TOKEN`
-- `INTERAKT_API_KEY`
-- `INTERAKT_API_URL`
+### 🚀 Como Implementar (30 minutos)
 
-3. **Push workflows para GitHub:**
-```bash
-git add .github/workflows/
-git commit -m "feat: Adiciona automações"
-git push
-```
-
-4. **Execute manualmente (teste):**
-```bash
-python automation/daily_alerts.py
-python automation/commercial_reminders.py
-python automation/weekly_reports.py
-```
+**Passo a passo visual:**
+1. Abra a List desejada (ex: "Contas a Pagar")
+2. Clique em "Automate" (ícone de raio, canto superior direito)
+3. Clique em "+ Add Automation"
+4. Configure trigger e actions (veja guia completo)
+5. Ative a automação
 
 ### 📚 Documentação Completa
 
-- **[SETUP_AUTOMACOES.md](SETUP_AUTOMACOES.md)** - Guia completo de setup
-- **[RESUMO_IMPLEMENTACAO_FINAL.md](RESUMO_IMPLEMENTACAO_FINAL.md)** - Resumo executivo
+- **[AUTOMACOES_CLICKUP_NATIVAS.md](AUTOMACOES_CLICKUP_NATIVAS.md)** - Guia passo a passo completo (30 min)
 
 ## 📁 Estrutura do Projeto
 
