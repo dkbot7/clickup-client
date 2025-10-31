@@ -4,6 +4,7 @@ Cliente Python moderno e completo para integração com a API v2 do ClickUp.
 
 ## 🌟 Características
 
+### Core Features
 - ✅ **100% Bilíngue (PT/EN)** - Use parâmetros em português ou inglês!
 - ✅ **100% compatível com Python 3.13**
 - ✅ **Datas em linguagem natural** (português e inglês)
@@ -11,8 +12,12 @@ Cliente Python moderno e completo para integração com a API v2 do ClickUp.
 - ✅ **Output formatado** com Rich
 - ✅ **Type hints completos**
 - ✅ **Exception handling robusto**
-- ✅ **Rate limiting automático**
 - ✅ **Sem dependências problemáticas** (sem Pendulum)
+
+### Production-Ready Features
+- ✅ **Retry Automático** - Backoff exponencial para rate limits (429)
+- ✅ **Paginação Automática** - Busca TODAS as páginas automaticamente
+- ✅ **Rate Limiting Inteligente** - Handling de 100+ req/min
 - ✅ **32+ métodos avançados** - Custom Fields, Time Tracking, Goals, Webhooks e mais!
 - ✅ **Helpers especializados** - Cálculos de tempo, formatação, análises
 
@@ -189,7 +194,66 @@ client.delete_task("task_id")
 
 # Listar tasks de uma lista
 tasks = client.get_tasks("list_id")
+
+# 🆕 Paginação automática - buscar TODAS as tasks
+all_tasks = client.get_tasks("list_id", paginate=True)
+print(f"Total: {len(all_tasks)} tasks encontradas")
 ```
+
+### 🔄 Paginação Automática e Retry
+
+#### Paginação Automática
+
+O cliente agora busca automaticamente **todas as páginas** quando solicitado:
+
+```python
+# Buscar apenas primeira página (padrão - 100 tasks)
+tasks_page_1 = client.get_tasks("list_id")
+
+# Buscar TODAS as tasks automaticamente
+all_tasks = client.get_tasks("list_id", paginate=True)
+
+# Com filtros
+active_tasks = client.get_tasks(
+    "list_id",
+    paginate=True,  # Busca todas as páginas
+    arquivada=False,
+    incluir_fechadas=False
+)
+
+print(f"Total de tasks ativas: {len(active_tasks)}")
+```
+
+**Vantagens:**
+- ✅ Suporta listas com 100+ tasks
+- ✅ Automático - não precisa controlar páginas manualmente
+- ✅ Funciona com todos os filtros
+
+#### Retry Automático
+
+O cliente possui **retry automático com backoff exponencial**:
+
+- **5 tentativas** máximas
+- **Backoff:** 0.5s → 1s → 2s → 4s → 8s
+- **Status codes:** 429, 500, 502, 503, 504
+
+```python
+# Não precisa fazer nada! O retry é automático
+client = KaloiClickUpClient()
+
+# Se a API retornar 429 (rate limit), o cliente:
+# 1. Aguarda 0.5s
+# 2. Tenta novamente
+# 3. Se falhar, aguarda 1s
+# 4. Tenta novamente... até 5 vezes
+
+task = client.get_task("task_id")  # Retry automático!
+```
+
+**Vantagens:**
+- ✅ Previne falhas por rate limiting
+- ✅ Não precisa implementar retry manual
+- ✅ Backoff exponencial evita sobrecarregar a API
 
 ### 📅 Datas em Linguagem Natural
 
