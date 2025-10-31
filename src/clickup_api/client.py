@@ -472,6 +472,769 @@ class KaloiClickUpClient:
         payload = {"comment_text": comment_text}
         return self._request("POST", f"task/{task_id}/comment", json=payload)
 
+    # ================== A. CUSTOM FIELDS ==================
+
+    def get_custom_fields(self, list_id: str) -> Optional[Dict]:
+        """
+        Obtém todos os custom fields de uma lista.
+
+        Args:
+            list_id: ID da lista
+
+        Returns:
+            dict com lista de custom fields
+        """
+        return self._request("GET", f"list/{list_id}/field")
+
+    def set_custom_field(
+        self,
+        task_id: str,
+        field_id: str,
+        value: Any,
+        **kwargs
+    ) -> Optional[Dict]:
+        """
+        Define valor de um custom field em uma task.
+
+        Args:
+            task_id: ID da task
+            field_id: UUID do custom field
+            value: Valor a ser definido
+            **kwargs: Parâmetros adicionais (ex: time=True para datas)
+
+        Returns:
+            dict com custom field atualizado
+        """
+        payload = {"value": value}
+        payload.update(kwargs)
+
+        result = self._request("POST", f"task/{task_id}/field/{field_id}", json=payload)
+
+        if result:
+            print(f"[green]✓ Custom field atualizado![/green]")
+
+        return result
+
+    def set_multiple_custom_fields(
+        self,
+        task_id: str,
+        fields: Dict[str, Any]
+    ) -> List[Optional[Dict]]:
+        """
+        Define múltiplos custom fields de uma task.
+
+        Args:
+            task_id: ID da task
+            fields: Dicionário {field_id: value}
+
+        Returns:
+            Lista com resultados
+        """
+        results = []
+        print(f"[yellow]⚠ Atualizando {len(fields)} custom fields...[/yellow]")
+
+        for field_id, value in fields.items():
+            result = self.set_custom_field(task_id, field_id, value)
+            results.append(result)
+
+        successful = sum(1 for r in results if r is not None)
+        print(f"[green]✓ {successful}/{len(fields)} custom fields atualizados[/green]")
+
+        return results
+
+    # ================== B. TIME TRACKING ==================
+
+    def create_time_entry(
+        self,
+        team_id: Optional[str] = None,
+        duration: int = None,
+        task_id: Optional[str] = None,
+        description: Optional[str] = None,
+        billable: bool = False,
+        start: Optional[int] = None,
+        tags: Optional[List[Dict]] = None
+    ) -> Optional[Dict]:
+        """
+        Cria um registro de tempo manualmente.
+
+        Args:
+            team_id: ID do workspace
+            duration: Duração em MILISSEGUNDOS
+            task_id: ID da task
+            description: Descrição do trabalho
+            billable: Se é faturável
+            start: Timestamp Unix em ms
+            tags: Lista de tags
+
+        Returns:
+            dict com time entry criado
+        """
+        tid = team_id or self.team_id
+
+        if not duration:
+            print("[red]✗ Duração é obrigatória[/red]")
+            return None
+
+        payload = {"duration": duration, "billable": billable}
+
+        if task_id:
+            payload["tid"] = task_id
+        if description:
+            payload["description"] = description
+        if start:
+            payload["start"] = start
+        if tags:
+            payload["tags"] = tags
+
+        result = self._request("POST", f"team/{tid}/time_entries", json=payload)
+
+        if result:
+            duration_hours = duration / 1000 / 3600
+            print(f"[green]✓ Time entry criado: {duration_hours:.2f}h[/green]")
+
+        return result
+
+    def start_timer(
+        self,
+        task_id: str,
+        team_id: Optional[str] = None,
+        description: Optional[str] = None,
+        billable: bool = False,
+        tags: Optional[List[Dict]] = None
+    ) -> Optional[Dict]:
+        """
+        Inicia um timer em tempo real.
+
+        Args:
+            task_id: ID da task
+            team_id: ID do workspace
+            description: Descrição
+            billable: Se é faturável
+            tags: Tags do time entry
+
+        Returns:
+            dict com timer iniciado
+        """
+        tid = team_id or self.team_id
+
+        payload = {"tid": task_id, "billable": billable}
+
+        if description:
+            payload["description"] = description
+        if tags:
+            payload["tags"] = tags
+
+        result = self._request("POST", f"team/{tid}/time_entries/start", json=payload)
+
+        if result:
+            print(f"[green]✓ Timer iniciado na task {task_id}[/green]")
+
+        return result
+
+    def stop_timer(self, team_id: Optional[str] = None) -> Optional[Dict]:
+        """
+        Para o timer em execução.
+
+        Args:
+            team_id: ID do workspace
+
+        Returns:
+            dict com timer parado
+        """
+        tid = team_id or self.team_id
+
+        result = self._request("POST", f"team/{tid}/time_entries/stop")
+
+        if result:
+            duration_ms = int(result.get("duration", 0))
+            duration_hours = duration_ms / 1000 / 3600
+            print(f"[green]✓ Timer parado: {duration_hours:.2f}h registradas[/green]")
+
+        return result
+
+    def get_running_timer(self, team_id: Optional[str] = None) -> Optional[Dict]:
+        """
+        Obtém o timer atualmente em execução.
+
+        Args:
+            team_id: ID do workspace
+
+        Returns:
+            dict com timer rodando ou None
+        """
+        tid = team_id or self.team_id
+
+        result = self._request("GET", f"team/{tid}/time_entries/current")
+
+        if result and result.get("data"):
+            timer = result["data"][0] if isinstance(result["data"], list) else result["data"]
+            print(f"[yellow]⏱ Timer rodando: {timer.get('description', 'Sem descrição')}[/yellow]")
+            return timer
+
+        print("[blue]ℹ Nenhum timer em execução[/blue]")
+        return None
+
+    def get_time_entries(
+        self,
+        team_id: Optional[str] = None,
+        start_date: Optional[int] = None,
+        end_date: Optional[int] = None,
+        assignee: Optional[List[int]] = None,
+        task_id: Optional[str] = None,
+        **filters
+    ) -> Optional[Dict]:
+        """
+        Busca time entries filtrados.
+
+        Args:
+            team_id: ID do workspace
+            start_date: Timestamp Unix em ms
+            end_date: Timestamp Unix em ms
+            assignee: Lista de user IDs
+            task_id: ID da task
+            **filters: Outros filtros
+
+        Returns:
+            dict com lista de time entries
+        """
+        from datetime import datetime, timedelta
+
+        tid = team_id or self.team_id
+
+        params = {}
+
+        if not start_date:
+            start_date = int((datetime.now() - timedelta(days=30)).timestamp() * 1000)
+        if not end_date:
+            end_date = int(datetime.now().timestamp() * 1000)
+
+        params["start_date"] = start_date
+        params["end_date"] = end_date
+
+        if assignee:
+            params["assignee"] = ",".join(map(str, assignee))
+        if task_id:
+            params["task_id"] = task_id
+
+        params.update(filters)
+
+        result = self._request("GET", f"team/{tid}/time_entries", params=params)
+
+        if result:
+            count = len(result.get("data", []))
+            print(f"[green]✓ {count} time entries encontrados[/green]")
+
+        return result
+
+    def update_time_entry(
+        self,
+        timer_id: str,
+        team_id: Optional[str] = None,
+        **updates
+    ) -> Optional[Dict]:
+        """
+        Atualiza um time entry.
+
+        Args:
+            timer_id: ID do time entry
+            team_id: ID do workspace
+            **updates: Campos a atualizar
+
+        Returns:
+            dict com time entry atualizado
+        """
+        tid = team_id or self.team_id
+
+        result = self._request("PUT", f"team/{tid}/time_entries/{timer_id}", json=updates)
+
+        if result:
+            print(f"[green]✓ Time entry atualizado[/green]")
+
+        return result
+
+    def delete_time_entry(
+        self,
+        timer_id: str,
+        team_id: Optional[str] = None
+    ) -> bool:
+        """
+        Deleta um time entry.
+
+        Args:
+            timer_id: ID do time entry
+            team_id: ID do workspace
+
+        Returns:
+            True se deletado
+        """
+        tid = team_id or self.team_id
+
+        result = self._request("DELETE", f"team/{tid}/time_entries/{timer_id}")
+
+        if result is not None:
+            print(f"[green]✓ Time entry deletado[/green]")
+            return True
+
+        return False
+
+    # ================== C. ATTACHMENTS ==================
+
+    def upload_attachment(self, task_id: str, file_path: str) -> Optional[Dict]:
+        """
+        Faz upload de anexo para uma task.
+
+        Args:
+            task_id: ID da task
+            file_path: Caminho do arquivo local
+
+        Returns:
+            dict com dados do attachment
+        """
+        import os
+
+        if not os.path.exists(file_path):
+            print(f"[red]✗ Arquivo não encontrado: {file_path}[/red]")
+            return None
+
+        filename = os.path.basename(file_path)
+
+        # Para upload, usar headers sem Content-Type (requests define automaticamente)
+        headers = {"Authorization": self.token}
+
+        with open(file_path, 'rb') as f:
+            files = {"attachment": (filename, f)}
+
+            url = f"{self.base_url}/task/{task_id}/attachment"
+
+            try:
+                response = requests.post(url, files=files, headers=headers)
+
+                if response.status_code >= 400:
+                    print(f"[red]✗ Erro {response.status_code}: {response.text}[/red]")
+                    return None
+
+                result = response.json() if response.text else {}
+
+                if result:
+                    print(f"[green]✓ Anexo enviado: {filename}[/green]")
+
+                return result
+
+            except Exception as e:
+                print(f"[red]✗ Erro no upload: {str(e)}[/red]")
+                return None
+
+    # ================== D. CHECKLISTS ==================
+
+    def create_checklist(self, task_id: str, name: str) -> Optional[Dict]:
+        """
+        Cria checklist em uma task.
+
+        Args:
+            task_id: ID da task
+            name: Nome do checklist
+
+        Returns:
+            dict com checklist criado
+        """
+        payload = {"name": name}
+        result = self._request("POST", f"task/{task_id}/checklist", json=payload)
+
+        if result:
+            print(f"[green]✓ Checklist criada: {name}[/green]")
+
+        return result
+
+    def add_checklist_item(
+        self,
+        checklist_id: str,
+        name: str,
+        assignee: Optional[int] = None
+    ) -> Optional[Dict]:
+        """
+        Adiciona item a um checklist.
+
+        Args:
+            checklist_id: ID do checklist
+            name: Nome do item
+            assignee: User ID (opcional)
+
+        Returns:
+            dict com item criado
+        """
+        payload = {"name": name}
+
+        if assignee:
+            payload["assignee"] = assignee
+
+        result = self._request("POST", f"checklist/{checklist_id}/checklist_item", json=payload)
+
+        if result:
+            print(f"[green]✓ Item adicionado: {name}[/green]")
+
+        return result
+
+    def complete_checklist_item(
+        self,
+        checklist_id: str,
+        item_id: str
+    ) -> Optional[Dict]:
+        """
+        Marca item como concluído.
+
+        Args:
+            checklist_id: ID do checklist
+            item_id: ID do item
+
+        Returns:
+            dict com item atualizado
+        """
+        return self._request(
+            "PUT",
+            f"checklist/{checklist_id}/checklist_item/{item_id}",
+            json={"resolved": True}
+        )
+
+    def delete_checklist(self, checklist_id: str) -> bool:
+        """
+        Deleta um checklist.
+
+        Args:
+            checklist_id: ID do checklist
+
+        Returns:
+            True se deletado
+        """
+        result = self._request("DELETE", f"checklist/{checklist_id}")
+
+        if result is not None:
+            print(f"[green]✓ Checklist deletado[/green]")
+            return True
+
+        return False
+
+    # ================== E. GOALS ==================
+
+    def create_goal(
+        self,
+        name: str,
+        team_id: Optional[str] = None,
+        description: Optional[str] = None,
+        due_date: Optional[int] = None,
+        color: Optional[str] = None,
+        owners: Optional[List[int]] = None
+    ) -> Optional[Dict]:
+        """
+        Cria uma meta (goal) no workspace.
+
+        Args:
+            name: Nome da meta
+            team_id: ID do workspace
+            description: Descrição
+            due_date: Timestamp Unix em ms
+            color: Cor em hex
+            owners: Lista de user IDs
+
+        Returns:
+            dict com goal criado
+        """
+        tid = team_id or self.team_id
+
+        payload = {"name": name}
+
+        if description:
+            payload["description"] = description
+        if due_date:
+            payload["due_date"] = due_date
+        if color:
+            payload["color"] = color
+        if owners:
+            payload["owners"] = owners
+            payload["multiple_owners"] = len(owners) > 1
+
+        result = self._request("POST", f"team/{tid}/goal", json=payload)
+
+        if result:
+            print(f"[green]✓ Meta criada: {name}[/green]")
+
+        return result
+
+    def get_goals(self, team_id: Optional[str] = None) -> Optional[Dict]:
+        """
+        Lista todas as metas do workspace.
+
+        Args:
+            team_id: ID do workspace
+
+        Returns:
+            dict com lista de goals
+        """
+        tid = team_id or self.team_id
+        return self._request("GET", f"team/{tid}/goal")
+
+    def get_goal(self, goal_id: str) -> Optional[Dict]:
+        """
+        Busca meta específica com seus targets.
+
+        Args:
+            goal_id: ID da meta
+
+        Returns:
+            dict com goal
+        """
+        return self._request("GET", f"goal/{goal_id}")
+
+    # ================== F. MEMBERS ==================
+
+    def get_list_members(self, list_id: str) -> Optional[Dict]:
+        """
+        Lista membros com acesso a uma lista.
+
+        Args:
+            list_id: ID da lista
+
+        Returns:
+            dict com membros
+        """
+        result = self._request("GET", f"list/{list_id}/member")
+
+        if result:
+            members = result.get("members", [])
+            print(f"[green]✓ {len(members)} membros encontrados[/green]")
+
+        return result
+
+    def get_task_members(self, task_id: str) -> Optional[Dict]:
+        """
+        Lista membros com acesso a uma task.
+
+        Args:
+            task_id: ID da task
+
+        Returns:
+            dict com membros
+        """
+        result = self._request("GET", f"task/{task_id}/member")
+
+        if result:
+            members = result.get("members", [])
+            print(f"[green]✓ {len(members)} membros encontrados[/green]")
+
+        return result
+
+    def add_assignees(
+        self,
+        task_id: str,
+        user_ids: List[int]
+    ) -> Optional[Dict]:
+        """
+        Adiciona assignees a uma task.
+
+        Args:
+            task_id: ID da task
+            user_ids: Lista de user IDs
+
+        Returns:
+            dict com task atualizada
+        """
+        payload = {"assignees": {"add": user_ids, "rem": []}}
+
+        result = self._request("PUT", f"task/{task_id}", json=payload)
+
+        if result:
+            print(f"[green]✓ {len(user_ids)} assignees adicionados[/green]")
+
+        return result
+
+    def remove_assignees(
+        self,
+        task_id: str,
+        user_ids: List[int]
+    ) -> Optional[Dict]:
+        """
+        Remove assignees de uma task.
+
+        Args:
+            task_id: ID da task
+            user_ids: Lista de user IDs
+
+        Returns:
+            dict com task atualizada
+        """
+        payload = {"assignees": {"add": [], "rem": user_ids}}
+
+        return self._request("PUT", f"task/{task_id}", json=payload)
+
+    # ================== G. WEBHOOKS ==================
+
+    def create_webhook(
+        self,
+        endpoint_url: str,
+        events: List[str],
+        team_id: Optional[str] = None,
+        space_id: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        list_id: Optional[str] = None
+    ) -> Optional[Dict]:
+        """
+        Cria um webhook.
+
+        Args:
+            endpoint_url: URL que receberá os eventos
+            events: Lista de eventos
+            team_id: ID do workspace
+            space_id: Filtrar por space
+            folder_id: Filtrar por folder
+            list_id: Filtrar por list
+
+        Returns:
+            dict com webhook criado
+        """
+        tid = team_id or self.team_id
+
+        payload = {"endpoint": endpoint_url, "events": events}
+
+        if space_id:
+            payload["space_id"] = space_id
+        elif folder_id:
+            payload["folder_id"] = folder_id
+        elif list_id:
+            payload["list_id"] = list_id
+
+        result = self._request("POST", f"team/{tid}/webhook", json=payload)
+
+        if result:
+            webhook_id = result.get("id")
+            print(f"[green]✓ Webhook criado: {webhook_id}[/green]")
+
+        return result
+
+    def get_webhooks(self, team_id: Optional[str] = None) -> Optional[Dict]:
+        """
+        Lista todos os webhooks.
+
+        Args:
+            team_id: ID do workspace
+
+        Returns:
+            dict com lista de webhooks
+        """
+        tid = team_id or self.team_id
+        return self._request("GET", f"team/{tid}/webhook")
+
+    def delete_webhook(self, webhook_id: str) -> bool:
+        """
+        Deleta um webhook.
+
+        Args:
+            webhook_id: ID do webhook
+
+        Returns:
+            True se deletado
+        """
+        result = self._request("DELETE", f"webhook/{webhook_id}")
+
+        if result is not None:
+            print(f"[green]✓ Webhook deletado[/green]")
+            return True
+
+        return False
+
+    # ================== H. VIEWS ==================
+
+    def get_list_views(self, list_id: str) -> Optional[Dict]:
+        """
+        Lista views de uma lista.
+
+        Args:
+            list_id: ID da lista
+
+        Returns:
+            dict com views
+        """
+        result = self._request("GET", f"list/{list_id}/view")
+
+        if result:
+            views = result.get("views", [])
+            print(f"[green]✓ {len(views)} views encontradas[/green]")
+
+        return result
+
+    def get_view(self, view_id: str) -> Optional[Dict]:
+        """
+        Busca view específica.
+
+        Args:
+            view_id: ID da view
+
+        Returns:
+            dict com view
+        """
+        return self._request("GET", f"view/{view_id}")
+
+    def get_view_tasks(
+        self,
+        view_id: str,
+        page: int = 0
+    ) -> Optional[Dict]:
+        """
+        Busca tasks de uma view.
+
+        Args:
+            view_id: ID da view
+            page: Página
+
+        Returns:
+            dict com tasks da view
+        """
+        params = {"page": page}
+        result = self._request("GET", f"view/{view_id}/task", params=params)
+
+        if result:
+            tasks = result.get("tasks", [])
+            print(f"[green]✓ {len(tasks)} tasks na view[/green]")
+
+        return result
+
+    def update_view(
+        self,
+        view_id: str,
+        name: Optional[str] = None,
+        grouping: Optional[Dict] = None,
+        sorting: Optional[Dict] = None,
+        filters: Optional[Dict] = None
+    ) -> Optional[Dict]:
+        """
+        Atualiza configurações de uma view.
+
+        Args:
+            view_id: ID da view
+            name: Novo nome
+            grouping: Agrupamento
+            sorting: Ordenação
+            filters: Filtros
+
+        Returns:
+            dict com view atualizada
+        """
+        payload = {}
+
+        if name:
+            payload["name"] = name
+        if grouping:
+            payload["grouping"] = grouping
+        if sorting:
+            payload["sorting"] = sorting
+        if filters:
+            payload["filters"] = filters
+
+        result = self._request("PUT", f"view/{view_id}", json=payload)
+
+        if result:
+            print(f"[green]✓ View atualizada[/green]")
+
+        return result
+
 
 # Alias para compatibilidade
 ClickUpClient = KaloiClickUpClient
