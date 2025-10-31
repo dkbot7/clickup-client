@@ -2,3 +2,7 @@ requests==2.31.0
 python-dotenv==1.0.0
 rich==13.7.0
 dateparser==1.2.2
+
+# Automações
+APScheduler==3.10.4
+python-dateutil==2.8.2

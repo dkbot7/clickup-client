@@ -1,0 +1,41 @@
+name: Commercial Reminders - WhatsApp
+
+on:
+  # Executa a cada 1 hora (para capturar lembretes 24h e 1h antes)
+  schedule:
+    - cron: '0 * * * *'
+
+  # Permite execução manual
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Enviar lembretes via WhatsApp
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          INTERAKT_API_KEY: ${{ secrets.INTERAKT_API_KEY }}
+          INTERAKT_API_URL: ${{ secrets.INTERAKT_API_URL }}
+        run: |
+          python automation/commercial_reminders.py
+
+      - name: Notificar em caso de erro
+        if: failure()
+        run: |
+          echo "❌ Erro ao enviar lembretes comerciais!"
+          echo "Verifique os logs em: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
