@@ -3,6 +3,8 @@ import requests
 from dotenv import load_dotenv
 from rich import print
 from typing import Optional, List, Dict, Any, Union
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from src.clickup_api.helpers.date_utils import fuzzy_time_to_unix, fuzzy_time_to_seconds
 from src.clickup_api.helpers.translation import translate_params
@@ -43,9 +45,29 @@ class KaloiClickUpClient:
             "Content-Type": "application/json"
         }
 
+        # Configurar session com retry automático
+        self.session = requests.Session()
+
+        # Estratégia de retry com backoff exponencial
+        retries = Retry(
+            total=5,  # Máximo de 5 tentativas
+            backoff_factor=1,  # Backoff exponencial: 0.5s, 1s, 2s, 4s, 8s
+            status_forcelist=[429, 500, 502, 503, 504],  # Status codes para retry
+            allowed_methods=["GET", "POST", "PUT", "DELETE", "PATCH"]  # Métodos HTTP
+        )
+
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
     def _request(self, method: str, endpoint: str, **kwargs) -> Any:
         """
         Método interno para fazer requisições HTTP com tratamento de erros.
+
+        Features:
+        - Retry automático com backoff exponencial
+        - Tratamento de rate limiting (429)
+        - Handling de erros HTTP
 
         Args:
             method: Método HTTP (GET, POST, PUT, DELETE)
@@ -58,7 +80,8 @@ class KaloiClickUpClient:
         url = f"{self.base_url}/{endpoint}"
 
         try:
-            response = requests.request(method, url, headers=self.headers, **kwargs)
+            # Usar session com retry automático
+            response = self.session.request(method, url, headers=self.headers, **kwargs)
 
             if response.status_code == 429:
                 print(f"[yellow]⚠ Rate limit atingido. Aguarde alguns segundos.[/yellow]")
@@ -73,6 +96,104 @@ class KaloiClickUpClient:
         except Exception as e:
             print(f"[red]✗ Erro na requisição: {str(e)}[/red]")
             return None
+
+    def _get_all_paginated(
+        self,
+        endpoint: str,
+        data_key: str = "tasks",
+        **params
+    ) -> List[Dict]:
+        """
+        Helper genérico para buscar todos os itens com paginação automática.
+
+        A API do ClickUp limita respostas a 100 itens por página.
+        Este método busca todas as páginas automaticamente.
+
+        Args:
+            endpoint: Endpoint da API (ex: "list/123/task")
+            data_key: Chave dos dados na response (ex: "tasks", "lists", "spaces")
+            **params: Parâmetros adicionais da requisição
+
+        Returns:
+            Lista completa de items de todas as páginas
+
+        Example:
+            >>> all_tasks = client._get_all_paginated("list/123/task", "tasks")
+            >>> print(f"Total: {len(all_tasks)} tasks")
+        """
+        all_items = []
+        page = 0
+
+        while True:
+            # Adicionar número da página aos parâmetros
+            params["page"] = page
+
+            # Fazer requisição
+            response = self._request("GET", endpoint, params=params)
+
+            # Verificar se há dados
+            if not response or data_key not in response:
+                break
+
+            items = response[data_key]
+            all_items.extend(items)
+
+            # Verificar se é a última página
+            # ClickUp retorna last_page=true ou menos de 100 itens
+            is_last_page = response.get("last_page", False)
+            has_less_than_limit = len(items) < 100
+
+            if is_last_page or has_less_than_limit:
+                break
+
+            page += 1
+
+        return all_items
+
+    def _iter_paginated(
+        self,
+        endpoint: str,
+        data_key: str = "tasks",
+        **params
+    ):
+        """
+        Generator para iterar sobre items paginados (lazy loading).
+
+        Mais eficiente em memória que _get_all_paginated para grandes volumes.
+
+        Args:
+            endpoint: Endpoint da API
+            data_key: Chave dos dados na response
+            **params: Parâmetros adicionais
+
+        Yields:
+            Dict: Item individual
+
+        Example:
+            >>> for task in client._iter_paginated("list/123/task", "tasks"):
+            ...     process_task(task)
+        """
+        page = 0
+
+        while True:
+            params["page"] = page
+            response = self._request("GET", endpoint, params=params)
+
+            if not response or data_key not in response:
+                break
+
+            items = response[data_key]
+
+            for item in items:
+                yield item
+
+            is_last_page = response.get("last_page", False)
+            has_less_than_limit = len(items) < 100
+
+            if is_last_page or has_less_than_limit:
+                break
+
+            page += 1
 
     # ================== AUTENTICAÇÃO ==================
 
@@ -242,7 +363,12 @@ class KaloiClickUpClient:
 
         return task
 
-    def get_tasks(self, list_id: str, **filters) -> Optional[Dict]:
+    def get_tasks(
+        self,
+        list_id: str,
+        paginate: bool = False,
+        **filters
+    ) -> Union[Optional[Dict], List[Dict]]:
         """
         Lista tasks de uma lista com filtros opcionais.
 
@@ -250,36 +376,49 @@ class KaloiClickUpClient:
 
         Args:
             list_id: ID da lista
+            paginate: Se True, busca TODAS as páginas automaticamente
             **filters: Filtros opcionais
 
         Filtros aceitos (PT ou EN):
             - archived/arquivada: true/false
-            - page/página: Número da página
+            - page/página: Número da página (ignorado se paginate=True)
             - order_by/ordenar_por: Campo para ordenação
             - include_closed/incluir_fechadas: true/false
             - subtasks/incluir_subtasks: true/false
 
         Exemplos:
-            # Português
-            tasks = client.get_tasks(
-                "list_id",
-                arquivada=False,
-                página=0
-            )
+            # Buscar primeira página (padrão)
+            tasks = client.get_tasks("list_id", arquivada=False)
 
-            # Inglês
+            # Buscar TODAS as tasks (paginação automática)
+            all_tasks = client.get_tasks("list_id", paginate=True)
+            print(f"Total: {len(all_tasks)} tasks")
+
+            # Com filtros em português
             tasks = client.get_tasks(
                 "list_id",
-                archived=False,
-                page=0
+                paginate=True,
+                arquivada=False,
+                incluir_fechadas=False
             )
 
         Returns:
-            dict com lista de tasks
+            Se paginate=False: dict com lista de tasks (1 página)
+            Se paginate=True: list com TODAS as tasks (todas as páginas)
         """
         # Traduz filtros PT → EN
         filters_translated = translate_params(filters, to_english=True)
-        return self._request("GET", f"list/{list_id}/task", params=filters_translated)
+
+        if paginate:
+            # Buscar todas as páginas automaticamente
+            return self._get_all_paginated(
+                f"list/{list_id}/task",
+                data_key="tasks",
+                **filters_translated
+            )
+        else:
+            # Buscar apenas 1 página
+            return self._request("GET", f"list/{list_id}/task", params=filters_translated)
 
     def create_task(
         self,
