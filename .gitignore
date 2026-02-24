@@ -66,3 +66,6 @@ tmp/
 
 # OS
 Thumbs.db
+
+# Claude Code (nunca commitar — contém comandos e tokens de sessão)
+.claude/
