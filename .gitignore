@@ -69,3 +69,52 @@ Thumbs.db
 
 # Claude Code (nunca commitar — contém comandos e tokens de sessão)
 .claude/
+tmpclaude-*
+
+# Arquivos de análise/sessão local (nunca commitar — podem conter IDs e dados do workspace)
+ANALISE_*.md
+RELATORIO_*.md
+RESUMO_*.md
+PLANO_*.md
+CHANGELOG_*.md
+GUIA_*.md
+IMPLEMENTACAO_*.md
+PROJETOS_*.md
+PROCESSO_*.md
+PROXIMOS_*.md
+RECOMENDACOES_*.md
+WHATSAPP_*.md
+ARQUIVOS_*.txt
+analise_aulas/
+docs/automacoes/
+*_analysis.json
+*_output.txt
+*_context.json
+*_report.json
+automation_opportunities.json
+clickup_ids.json
+workspace_full_analysis.json
+projetos_custom_fields.json
+all_custom_fields.json
+CADERNO-*.md
+PROJETO_MODELO_*.md
+
+# Scripts de análise/automação gerados em sessão
+add_important_links_comment.py
+add_missing_tags.py
+analyze_automation_opportunities.py
+analyze_comercial.py
+analyze_current_painel.py
+analyze_each_project.py
+analyze_full_workspace.py
+analyze_projetos_space.py
+archive_unused_folders.py
+deep_dive_projetos_2.py
+explore_projetos_2.py
+get_clickup_ids.py
+implement_dkbots_project.py
+investigate_custom_fields.py
+migrate_projects.py
+populate_python_client_task.py
+update_milestones.py
+verify_space_rename.py
