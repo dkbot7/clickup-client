@@ -31,6 +31,7 @@ jobs:
           LIST_ID_PROJETOS_EXTERNOS: ${{ secrets.LIST_ID_PROJETOS_EXTERNOS }}
           LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}
           LIST_ID_SESSAO_ESTRATEGICA: ${{ secrets.LIST_ID_SESSAO_ESTRATEGICA }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python automation/workflow_automations.py
 

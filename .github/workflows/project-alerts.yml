@@ -29,6 +29,7 @@ jobs:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           LIST_ID_PROJETOS_INTERNOS: ${{ secrets.LIST_ID_PROJETOS_INTERNOS }}
           LIST_ID_PROJETOS_EXTERNOS: ${{ secrets.LIST_ID_PROJETOS_EXTERNOS }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python automation/project_alerts.py
 

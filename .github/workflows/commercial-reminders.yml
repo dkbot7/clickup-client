@@ -36,6 +36,7 @@ jobs:
           CUSTOM_FIELD_WHATSAPP: ${{ secrets.CUSTOM_FIELD_WHATSAPP }}
           CUSTOM_FIELD_AGENDAMENTO: ${{ secrets.CUSTOM_FIELD_AGENDAMENTO }}
           CUSTOM_FIELD_MEETING_URL: ${{ secrets.CUSTOM_FIELD_MEETING_URL }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python automation/commercial_reminders.py
 
