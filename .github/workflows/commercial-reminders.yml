@@ -1,11 +1,9 @@
 name: Commercial Reminders - WhatsApp
 
 on:
-  # DESABILITADO - aguardando configuração do Interakt
-  # schedule:
-  #   - cron: '0 * * * *'
+  schedule:
+    - cron: '0 * * * *'  # A cada hora
 
-  # Permite execução manual quando necessário
   workflow_dispatch:
 
 jobs:
@@ -13,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout código
+      - name: Checkout codigo
         uses: actions/checkout@v4
 
       - name: Setup Python 3.11
@@ -21,7 +19,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -30,13 +28,11 @@ jobs:
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           CLICKUP_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
-          INTERAKT_API_KEY: ${{ secrets.INTERAKT_API_KEY }}
-          INTERAKT_API_URL: ${{ secrets.INTERAKT_API_URL }}
           LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}
           LIST_ID_SESSAO_ESTRATEGICA: ${{ secrets.LIST_ID_SESSAO_ESTRATEGICA }}
-          CUSTOM_FIELD_WHATSAPP: ${{ secrets.CUSTOM_FIELD_WHATSAPP }}
-          CUSTOM_FIELD_AGENDAMENTO: ${{ secrets.CUSTOM_FIELD_AGENDAMENTO }}
-          CUSTOM_FIELD_MEETING_URL: ${{ secrets.CUSTOM_FIELD_MEETING_URL }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: ${{ secrets.WHATSAPP_API_VERSION }}
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python automation/commercial_reminders.py
@@ -44,5 +40,5 @@ jobs:
       - name: Notificar em caso de erro
         if: failure()
         run: |
-          echo "❌ Erro ao enviar lembretes comerciais!"
-          echo "Verifique os logs em: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Erro ao enviar lembretes comerciais!"
+          echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

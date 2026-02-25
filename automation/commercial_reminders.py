@@ -1,201 +1,187 @@
 """
-Automação: Lembretes Comerciais via WhatsApp
+Automacao: Lembretes Comerciais via WhatsApp (API oficial Meta)
 Executa: A cada 1 hora (via GitHub Actions)
 
-Funcionalidade:
-- Lembrete 24h antes da reunião
-- Lembrete 1h antes da reunião
-- Usa custom field "WhatsApp" e "Agendamento"
+Automacoes implementadas:
+- COM-01: Lembrete 24h antes da reuniao -> WhatsApp
+- COM-02: Lembrete 1h antes da reuniao -> WhatsApp
+
+Requisitos:
+  WHATSAPP_PHONE_NUMBER_ID  - ID do numero de telefone Meta
+  WHATSAPP_ACCESS_TOKEN     - Token de acesso Meta
+  WHATSAPP_API_VERSION      - Versao da API (ex: v22.0)
+
+Custom fields usados:
+  WhatsApp:    08f6f16e-6425-4806-954f-b78b7abd1e57 (phone)
+  Agendamento: 6aefbfe5-75af-4fd2-b9ba-2047b40ce82f (date)
+  Meeting URL: ffb916ff-2f9a-4d00-809f-a82765f08c90 (url)
+
+ATENCAO: O token de acesso gerado no painel do desenvolvedor expira em ~24h.
+Para producao, gere um token permanente via Sistema de Usuarios no Meta Business Manager.
 """
-from src.clickup_api.client import KaloiClickUpClient
-from src.integrations.whatsapp_client import InteraktWhatsAppClient
-from datetime import datetime, timedelta
 import os
+import requests
+from datetime import datetime, timezone
+from src.clickup_api.client import KaloiClickUpClient
 
+# WhatsApp API
+WA_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+WA_ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
+WA_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v22.0")
+WA_API_URL = f"https://graph.facebook.com/{WA_API_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
 
-# IDs do ClickUp (via variáveis de ambiente)
+# ClickUp Lists
 LIST_ID_AGENDA_COMERCIAL = os.environ.get("LIST_ID_AGENDA_COMERCIAL")
 LIST_ID_SESSAO_ESTRATEGICA = os.environ.get("LIST_ID_SESSAO_ESTRATEGICA")
 
-# Custom Field IDs (via variáveis de ambiente)
-CUSTOM_FIELD_WHATSAPP = os.environ.get("CUSTOM_FIELD_WHATSAPP")
-CUSTOM_FIELD_AGENDAMENTO = os.environ.get("CUSTOM_FIELD_AGENDAMENTO")
-CUSTOM_FIELD_MEETING_URL = os.environ.get("CUSTOM_FIELD_MEETING_URL")
+# Custom fields
+CF_WHATSAPP = "08f6f16e-6425-4806-954f-b78b7abd1e57"
+CF_AGENDAMENTO = "6aefbfe5-75af-4fd2-b9ba-2047b40ce82f"
+CF_MEETING_URL = "ffb916ff-2f9a-4d00-809f-a82765f08c90"
 
 
-def send_meeting_reminders():
-    """
-    Envia lembretes de reuniões via WhatsApp
+def get_cf(task, field_id):
+    for f in task.get("custom_fields", []):
+        if f["id"] == field_id:
+            return f.get("value")
+    return None
 
-    Horários:
-    - 24h antes: Lembrete amigável
-    - 1h antes: Lembrete urgente
-    """
 
-    clickup = KaloiClickUpClient()
-    whatsapp = InteraktWhatsAppClient()
+def send_whatsapp_text(phone_number, message):
+    """Envia mensagem de texto simples via WhatsApp Business API."""
+    if not WA_PHONE_NUMBER_ID or not WA_ACCESS_TOKEN:
+        print("  ERRO: WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_ACCESS_TOKEN nao configurados")
+        return False
 
-    print("=" * 70)
-    print("ENVIANDO LEMBRETES DE REUNIÕES VIA WHATSAPP")
-    print("=" * 70)
-    print()
+    # Normalizar numero (remover espacos, tracos, garantir codigo do pais)
+    phone = phone_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if phone.startswith("0"):
+        phone = "55" + phone[1:]
+    if not phone.startswith("+") and not phone.startswith("55"):
+        phone = "55" + phone
+    phone = phone.lstrip("+")
 
-    # Lists a verificar
-    lists_to_check = {
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": phone,
+        "type": "text",
+        "text": {"body": message}
+    }
+
+    headers = {
+        "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(WA_API_URL, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        return True
+    else:
+        print(f"  ERRO WhatsApp API: {response.status_code} - {response.text[:200]}")
+        return False
+
+
+def run_commercial_reminders():
+    client = KaloiClickUpClient()
+    now = datetime.now(tz=timezone.utc)
+    totais = {"24h": 0, "1h": 0, "sem_whatsapp": 0, "sem_data": 0}
+
+    listas = {
         "Agenda Comercial": LIST_ID_AGENDA_COMERCIAL,
-        "Sessão Estratégica": LIST_ID_SESSAO_ESTRATEGICA
+        "Sessao Estrategica": LIST_ID_SESSAO_ESTRATEGICA,
     }
 
-    lembretes_enviados = {
-        "24h": 0,
-        "1h": 0,
-        "erros": 0
-    }
+    print("=" * 60)
+    print(f"LEMBRETES COMERCIAIS VIA WHATSAPP - {now.strftime('%d/%m/%Y %H:%M')} UTC")
+    print("=" * 60)
 
-    for list_name, list_id in lists_to_check.items():
-        print(f"Verificando: {list_name}")
-        print("-" * 70)
-
-        tasks = clickup.get_tasks(
-            list_id,
-            paginate=True,
-            arquivada=False,
-            incluir_fechadas=False
-        )
-
-        if not tasks:
-            print(f"  Sem reuniões agendadas")
-            print()
+    for list_name, list_id in listas.items():
+        if not list_id:
             continue
 
-        print(f"  {len(tasks)} reunião(ões) encontrada(s)")
-        print()
+        print(f"\n{list_name}:")
+        tasks = client.get_tasks(list_id, paginate=True, arquivada=False, incluir_fechadas=False)
 
         for task in tasks:
-            task_id = task['id']
-            task_name = task['name']
+            task_id = task["id"]
+            task_name = task["name"]
+            current_tags = [t["name"] for t in task.get("tags", [])]
 
-            # Obter custom fields
-            custom_fields = {
-                field['id']: field for field in task.get('custom_fields', [])
-            }
+            # Obter numero de WhatsApp
+            whatsapp = get_cf(task, CF_WHATSAPP)
+            if not whatsapp:
+                totais["sem_whatsapp"] += 1
+                continue
 
             # Obter data de agendamento
-            agendamento_field = custom_fields.get(CUSTOM_FIELD_AGENDAMENTO)
-            if not agendamento_field or not agendamento_field.get('value'):
-                print(f"  ⚠️  {task_name}: Sem data de agendamento")
+            agendamento_ts = get_cf(task, CF_AGENDAMENTO)
+            if not agendamento_ts:
+                totais["sem_data"] += 1
                 continue
 
-            # Converter timestamp para datetime
-            agendamento_ts = int(agendamento_field['value'])
-            meeting_time = datetime.fromtimestamp(agendamento_ts / 1000)
+            meeting_dt = datetime.fromtimestamp(int(agendamento_ts) / 1000, tz=timezone.utc)
+            hours_until = (meeting_dt - now).total_seconds() / 3600
+            meeting_str = meeting_dt.strftime("%d/%m/%Y as %H:%M")
 
-            # Calcular diferença de tempo
-            now = datetime.now()
-            hours_until = (meeting_time - now).total_seconds() / 3600
+            # Link da reuniao (se disponivel)
+            meeting_url = get_cf(task, CF_MEETING_URL) or ""
 
-            # Obter WhatsApp do cliente
-            whatsapp_field = custom_fields.get(CUSTOM_FIELD_WHATSAPP)
-            if not whatsapp_field or not whatsapp_field.get('value'):
-                print(f"  ⚠️  {task_name}: Sem WhatsApp cadastrado")
-                continue
-
-            phone = whatsapp_field['value']
-
-            # Obter link da reunião (opcional)
-            meeting_url_field = custom_fields.get(CUSTOM_FIELD_MEETING_URL)
-            meeting_url = meeting_url_field.get('value') if meeting_url_field else None
-
-            # Verificar se já foi enviado (via tags)
-            current_tags = [tag['name'] for tag in task.get('tags', [])]
-
-            # LEMBRETE 24H ANTES
-            if 23.5 <= hours_until <= 24.5 and 'lembrete-24h-enviado' not in current_tags:
-                print(f"  📅 Enviando lembrete 24h: {task_name}")
-
-                # Preparar mensagem
-                message = f"""Olá! 👋
-
-Lembrete: Você tem uma reunião marcada para *amanhã*!
-
-📅 *{task_name}*
-🕐 {meeting_time.strftime('%d/%m/%Y às %H:%M')}"""
-
+            # --- COM-01: Lembrete 24h antes ---
+            if 23 <= hours_until <= 25 and "lembrete-24h-enviado" not in current_tags:
+                print(f"  [COM-01] {task_name} - enviando lembrete 24h para {whatsapp}")
+                msg = (
+                    f"Ola! Lembrete da sua reuniao marcada para amanha.\n\n"
+                    f"Reuniao: {task_name}\n"
+                    f"Data/Hora: {meeting_str} (horario de Brasilia)\n"
+                )
                 if meeting_url:
-                    message += f"\n🔗 Link: {meeting_url}"
+                    msg += f"Link: {meeting_url}\n"
+                msg += "\nAguardamos voce! Qualquer duvida, estamos a disposicao."
 
-                message += "\n\nNos vemos lá!"
+                if send_whatsapp_text(whatsapp, msg):
+                    client.add_tag(task_id, "lembrete-24h-enviado")
+                    client.post_task_comment(task_id, f"Lembrete de 24h enviado via WhatsApp para {whatsapp}")
+                    totais["24h"] += 1
 
-                # Enviar WhatsApp
-                result = whatsapp.send_message(phone, message, track_id=task_id)
-
-                if result.get('success'):
-                    # Marcar como enviado
-                    clickup.add_tag(task_id, 'lembrete-24h-enviado')
-                    lembretes_enviados["24h"] += 1
-                    print(f"     ✅ Enviado para {phone}")
-                else:
-                    lembretes_enviados["erros"] += 1
-                    print(f"     ❌ Erro ao enviar")
-
-                print()
-
-            # LEMBRETE 1H ANTES
-            elif 0.9 <= hours_until <= 1.1 and 'lembrete-1h-enviado' not in current_tags:
-                print(f"  ⏰ Enviando lembrete 1h: {task_name}")
-
-                # Mensagem mais urgente
-                message = f"""⏰ *LEMBRETE IMPORTANTE*
-
-Sua reunião é *daqui a 1 hora*!
-
-📅 {task_name}
-🕐 {meeting_time.strftime('%H:%M')}"""
-
+            # --- COM-02: Lembrete 1h antes ---
+            elif 0.75 <= hours_until <= 1.25 and "lembrete-1h-enviado" not in current_tags:
+                print(f"  [COM-02] {task_name} - enviando lembrete 1h para {whatsapp}")
+                msg = (
+                    f"Sua reuniao comeca em 1 hora!\n\n"
+                    f"Reuniao: {task_name}\n"
+                    f"Horario: {meeting_str}\n"
+                )
                 if meeting_url:
-                    message += f"\n🔗 Link: {meeting_url}"
+                    msg += f"Acesse aqui: {meeting_url}\n"
+                msg += "\nNos vemos em breve!"
 
-                message += "\n\nAté já!"
+                if send_whatsapp_text(whatsapp, msg):
+                    client.add_tag(task_id, "lembrete-1h-enviado")
+                    client.post_task_comment(task_id, f"Lembrete de 1h enviado via WhatsApp para {whatsapp}")
+                    totais["1h"] += 1
 
-                # Enviar WhatsApp
-                result = whatsapp.send_message(phone, message, track_id=task_id)
-
-                if result.get('success'):
-                    # Marcar como enviado
-                    clickup.add_tag(task_id, 'lembrete-1h-enviado')
-                    lembretes_enviados["1h"] += 1
-                    print(f"     ✅ Enviado para {phone}")
-                else:
-                    lembretes_enviados["erros"] += 1
-                    print(f"     ❌ Erro ao enviar")
-
-                print()
-
-        print()
-
-    # Resumo
-    print("=" * 70)
-    print("RESUMO DOS LEMBRETES ENVIADOS")
-    print("=" * 70)
-    print(f"📅 24h antes: {lembretes_enviados['24h']}")
-    print(f"⏰ 1h antes: {lembretes_enviados['1h']}")
-    print(f"❌ Erros: {lembretes_enviados['erros']}")
-    print()
-
-    total = lembretes_enviados['24h'] + lembretes_enviados['1h']
+    print(f"\n{'='*60}")
+    print("RESUMO - LEMBRETES COMERCIAIS")
+    print(f"{'='*60}")
+    print(f"[COM-01] Lembretes 24h enviados:  {totais['24h']}")
+    print(f"[COM-02] Lembretes 1h enviados:   {totais['1h']}")
+    print(f"Sem WhatsApp cadastrado:           {totais['sem_whatsapp']}")
+    print(f"Sem data de agendamento:           {totais['sem_data']}")
+    total = totais["24h"] + totais["1h"]
     if total == 0:
-        print("✅ Nenhum lembrete necessário no momento.")
+        print("Nenhum lembrete necessario no momento.")
     else:
-        print(f"Total de lembretes: {total}")
-
-    print()
+        print(f"Total enviados: {total}")
 
 
 if __name__ == "__main__":
     try:
-        send_meeting_reminders()
-        print("✅ Verificação de lembretes concluída!")
+        run_commercial_reminders()
+        print("\nConcluido com sucesso!")
     except Exception as e:
-        print(f"❌ Erro durante envio de lembretes: {e}")
+        print(f"Erro: {e}")
         import traceback
         traceback.print_exc()
+        raise
