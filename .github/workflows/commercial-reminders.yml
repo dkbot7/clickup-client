@@ -1,11 +1,11 @@
 name: Commercial Reminders - WhatsApp
 
 on:
-  # Executa a cada 1 hora (para capturar lembretes 24h e 1h antes)
-  schedule:
-    - cron: '0 * * * *'
+  # DESABILITADO - aguardando configuração do Interakt
+  # schedule:
+  #   - cron: '0 * * * *'
 
-  # Permite execução manual
+  # Permite execução manual quando necessário
   workflow_dispatch:
 
 jobs:
