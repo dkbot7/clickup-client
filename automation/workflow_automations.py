@@ -266,9 +266,12 @@ def run_workflow_automations():
             current_tags = [t["name"] for t in task.get("tags", [])]
             status = task.get("status", {}).get("status", "").lower()
 
-            # --- COM-03: Status "negócio fechado" → Tag + Comentário ---
-            # Status real em Sessão Estratégica: "negócio fechado" (type: closed)
-            if status in ("negócio fechado", "negocio fechado") and "onboarding-notificado" not in current_tags:
+            # --- COM-03: Status "negócio fechado" / "venda concluída" → Tag + Comentário ---
+            # Sessão Estratégica: "negócio fechado"
+            # Agenda Comercial: "venda concluída"
+            venda_statuses = ("negócio fechado", "negocio fechado",
+                              "venda concluída", "venda concluida")
+            if status in venda_statuses and "onboarding-notificado" not in current_tags:
                 print(f"  [COM-03] {task_name} - Negocio fechado! Notificando onboarding")
                 client.add_tag(task_id, "onboarding-notificado")
                 client.post_task_comment(

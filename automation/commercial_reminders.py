@@ -13,8 +13,10 @@ Requisitos:
 
 Custom fields usados:
   WhatsApp:    08f6f16e-6425-4806-954f-b78b7abd1e57 (phone)
-  Agendamento: 6aefbfe5-75af-4fd2-b9ba-2047b40ce82f (date)
   Meeting URL: ffb916ff-2f9a-4d00-809f-a82765f08c90 (url)
+
+Nota: Data da reuniao lida do campo nativo due_date da task (nao ha custom field Agendamento).
+Status monitorados: REUNIAO/VISITA AGENDADA, EM REUNIAO/VISITA
 
 ATENCAO: O token de acesso gerado no painel do desenvolvedor expira em ~24h.
 Para producao, gere um token permanente via Sistema de Usuarios no Meta Business Manager.
@@ -36,8 +38,11 @@ LIST_ID_SESSAO_ESTRATEGICA = os.environ.get("LIST_ID_SESSAO_ESTRATEGICA")
 
 # Custom fields
 CF_WHATSAPP = "08f6f16e-6425-4806-954f-b78b7abd1e57"
-CF_AGENDAMENTO = "6aefbfe5-75af-4fd2-b9ba-2047b40ce82f"
 CF_MEETING_URL = "ffb916ff-2f9a-4d00-809f-a82765f08c90"
+
+# Status que indicam reuniao agendada
+REUNIAO_STATUSES = ("reunião/visita agendada", "reuniao/visita agendada",
+                    "em reunião/visita", "em reuniao/visita")
 
 
 def get_cf(task, field_id):
@@ -115,13 +120,18 @@ def run_commercial_reminders():
                 totais["sem_whatsapp"] += 1
                 continue
 
-            # Obter data de agendamento
-            agendamento_ts = get_cf(task, CF_AGENDAMENTO)
-            if not agendamento_ts:
+            # Verificar se status indica reuniao agendada
+            status = task.get("status", {}).get("status", "").lower().strip()
+            if status not in REUNIAO_STATUSES:
+                continue
+
+            # Obter data da reuniao via due_date nativo da task
+            due_date_ts = task.get("due_date")
+            if not due_date_ts:
                 totais["sem_data"] += 1
                 continue
 
-            meeting_dt = datetime.fromtimestamp(int(agendamento_ts) / 1000, tz=timezone.utc)
+            meeting_dt = datetime.fromtimestamp(int(due_date_ts) / 1000, tz=timezone.utc)
             hours_until = (meeting_dt - now).total_seconds() / 3600
             meeting_str = meeting_dt.strftime("%d/%m/%Y as %H:%M")
 

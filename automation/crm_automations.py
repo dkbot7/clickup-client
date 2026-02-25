@@ -89,14 +89,16 @@ def run_crm_automations():
                 totais["crm02"] += 1
 
             # --- CRM-03: Status reuniao agendada -> Google Calendar ---
+            # Data da reuniao via due_date nativo (nao ha custom field Agendamento)
             reuniao_statuses = ("reuniao agendada", "reuniao/visita agendada",
                                 "reunião agendada", "reunião/visita agendada",
-                                "em reuniao", "em reunião")
+                                "em reuniao", "em reunião", "em reuniao/visita",
+                                "em reunião/visita")
             if status in reuniao_statuses and "calendario-criado" not in current_tags:
-                agendamento_ts = get_cf(task, CF_AGENDAMENTO)
-                if agendamento_ts:
+                due_date_ts = task.get("due_date")
+                if due_date_ts:
                     try:
-                        meeting_dt = datetime.fromtimestamp(int(agendamento_ts) / 1000, tz=timezone.utc)
+                        meeting_dt = datetime.fromtimestamp(int(due_date_ts) / 1000, tz=timezone.utc)
                         event_link = _create_calendar_event(task_name, meeting_dt, task.get("url", ""))
                         client.add_tag(task_id, "calendario-criado")
                         msg = f"Evento criado no Google Calendar!\nData: {meeting_dt.strftime('%d/%m/%Y as %H:%M')}"
@@ -108,7 +110,7 @@ def run_crm_automations():
                     except Exception as e:
                         print(f"  [CRM-03] ERRO em {task_name}: {e}")
                 else:
-                    print(f"  [CRM-03] {task_name} - sem data de Agendamento, pulando")
+                    print(f"  [CRM-03] {task_name} - sem due_date, pulando")
 
             # --- CRM-04: Status negociando proposta -> Google Docs ---
             proposta_statuses = ("negociando proposta",)
