@@ -29,6 +29,7 @@ jobs:
       - name: Enviar lembretes via WhatsApp
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          CLICKUP_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           INTERAKT_API_KEY: ${{ secrets.INTERAKT_API_KEY }}
           INTERAKT_API_URL: ${{ secrets.INTERAKT_API_URL }}
           LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}

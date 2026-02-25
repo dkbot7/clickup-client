@@ -27,6 +27,7 @@ jobs:
       - name: Executar alertas diários
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          CLICKUP_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           SPACE_ID_GESTAO_ADM: ${{ secrets.SPACE_ID_GESTAO_ADM }}
           LIST_ID_CONTAS_PAGAR: ${{ secrets.LIST_ID_CONTAS_PAGAR }}
           PYTHONPATH: ${{ github.workspace }}
