@@ -1,11 +1,11 @@
 name: Weekly Reports - Produtividade
 
 on:
-  # Executa toda segunda-feira às 9h (horário UTC-3 = 12:00 UTC)
-  schedule:
-    - cron: '0 12 * * 1'
+  # DESABILITADO - aguardando configuração do secret CLICKUP_API_TOKEN no GitHub
+  # schedule:
+  #   - cron: '0 12 * * 1'
 
-  # Permite execução manual
+  # Permite execução manual quando necessário
   workflow_dispatch:
 
 jobs:

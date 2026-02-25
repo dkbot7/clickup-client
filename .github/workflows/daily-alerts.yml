@@ -1,11 +1,11 @@
 name: Daily Alerts - Contas a Pagar
 
 on:
-  # Executa diariamente às 9h (horário UTC-3 = 12:00 UTC)
-  schedule:
-    - cron: '0 12 * * *'
+  # DESABILITADO - aguardando configuração do secret CLICKUP_API_TOKEN no GitHub
+  # schedule:
+  #   - cron: '0 12 * * *'
 
-  # Permite execução manual
+  # Permite execução manual quando necessário
   workflow_dispatch:
 
 jobs:
