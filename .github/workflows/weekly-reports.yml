@@ -29,6 +29,12 @@ jobs:
       - name: Gerar relatório semanal
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          SPACE_ID_GESTAO_ADM: ${{ secrets.SPACE_ID_GESTAO_ADM }}
+          SPACE_ID_COMERCIAL: ${{ secrets.SPACE_ID_COMERCIAL }}
+          SPACE_ID_PROJETOS: ${{ secrets.SPACE_ID_PROJETOS }}
+          LIST_ID_CONTAS_PAGAR: ${{ secrets.LIST_ID_CONTAS_PAGAR }}
+          LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}
+          LIST_ID_SESSAO_ESTRATEGICA: ${{ secrets.LIST_ID_SESSAO_ESTRATEGICA }}
         run: |
           python automation/weekly_reports.py
 

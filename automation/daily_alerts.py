@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 import os
 
 
-# IDs do ClickUp (obtidos via get_clickup_ids.py)
-LIST_ID_CONTAS_PAGAR = "YOUR_LIST_ID_CONTAS_PAGAR"
-SPACE_ID_GESTAO_ADM = "YOUR_SPACE_ID_GESTAO_ADM"
+# IDs do ClickUp (via variáveis de ambiente)
+LIST_ID_CONTAS_PAGAR = os.environ.get("LIST_ID_CONTAS_PAGAR")
+SPACE_ID_GESTAO_ADM = os.environ.get("SPACE_ID_GESTAO_ADM")
 
 
 def check_overdue_bills():

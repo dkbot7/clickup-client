@@ -31,6 +31,11 @@ jobs:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           INTERAKT_API_KEY: ${{ secrets.INTERAKT_API_KEY }}
           INTERAKT_API_URL: ${{ secrets.INTERAKT_API_URL }}
+          LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}
+          LIST_ID_SESSAO_ESTRATEGICA: ${{ secrets.LIST_ID_SESSAO_ESTRATEGICA }}
+          CUSTOM_FIELD_WHATSAPP: ${{ secrets.CUSTOM_FIELD_WHATSAPP }}
+          CUSTOM_FIELD_AGENDAMENTO: ${{ secrets.CUSTOM_FIELD_AGENDAMENTO }}
+          CUSTOM_FIELD_MEETING_URL: ${{ secrets.CUSTOM_FIELD_MEETING_URL }}
         run: |
           python automation/commercial_reminders.py
 
