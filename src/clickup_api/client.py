@@ -611,6 +611,38 @@ class KaloiClickUpClient:
         payload = {"comment_text": comment_text}
         return self._request("POST", f"task/{task_id}/comment", json=payload)
 
+    def post_task_comment(self, task_id: str, comment_text: str) -> Optional[Dict]:
+        """Alias de create_task_comment para compatibilidade com scripts de automacao."""
+        return self.create_task_comment(task_id, comment_text)
+
+    def add_tag(self, task_id: str, tag_name: str) -> bool:
+        """
+        Adiciona uma tag a uma task.
+
+        Args:
+            task_id: ID da task
+            tag_name: Nome da tag
+
+        Returns:
+            True se sucesso, False caso contrario
+        """
+        result = self._request("POST", f"task/{task_id}/tag/{tag_name}")
+        return result is not None
+
+    def remove_tag(self, task_id: str, tag_name: str) -> bool:
+        """
+        Remove uma tag de uma task.
+
+        Args:
+            task_id: ID da task
+            tag_name: Nome da tag
+
+        Returns:
+            True se sucesso, False caso contrario
+        """
+        result = self._request("DELETE", f"task/{task_id}/tag/{tag_name}")
+        return result is not None
+
     # ================== A. CUSTOM FIELDS ==================
 
     def get_custom_fields(self, list_id: str) -> Optional[Dict]:
