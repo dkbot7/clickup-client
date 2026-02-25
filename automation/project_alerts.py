@@ -1,11 +1,20 @@
 """
-Automação: Alertas de Projetos
-Executa: Diariamente às 9h (via GitHub Actions)
+Automacao: Alertas de Projetos
+Executa: Diariamente as 9h (via GitHub Actions)
 
-Automações implementadas:
-- PRJ-04: Prazo vencido → Tag "atrasado" + Task de revisão
+Automacoes implementadas:
+- PRJ-04: Prazo vencido -> Tag "atrasado" + comentario
 - PRJ-05: Alertas progressivos 7/3/1 dias antes do prazo
-- PRJ-07: Valor > R$50k → Tag "alto-valor"
+- PRJ-06: Campo Risco = Alto ou Critico -> tag + comentario
+- PRJ-07: Valor > R$50k -> Tag "alto-valor"
+- PRJ-08: Valor Gasto > Orcamento -> tag "orcamento-excedido" + comentario
+
+Custom fields confirmados via API (Projetos Internos):
+  Valor:       2aca62aa-12c2-4911-8081-453926e59577
+  Orcamento:   5123a4f6-b79c-49aa-b3a9-db260f56c31f
+  Valor Gasto: 61eb9626-42ca-4117-a87e-a2948800cfe1
+  Risco:       fc82fac4-449b-4e2e-8c6d-0242f1084667
+               (dropdown: 0=Baixo, 1=Medio, 2=Alto, 3=Critico)
 """
 from src.clickup_api.client import KaloiClickUpClient
 from datetime import datetime, timedelta
@@ -16,6 +25,9 @@ LIST_ID_PROJETOS_INTERNOS = os.environ.get("LIST_ID_PROJETOS_INTERNOS")
 LIST_ID_PROJETOS_EXTERNOS = os.environ.get("LIST_ID_PROJETOS_EXTERNOS")
 
 CUSTOM_FIELD_VALOR = "2aca62aa-12c2-4911-8081-453926e59577"
+CUSTOM_FIELD_ORCAMENTO = "5123a4f6-b79c-49aa-b3a9-db260f56c31f"
+CUSTOM_FIELD_VALOR_GASTO = "61eb9626-42ca-4117-a87e-a2948800cfe1"
+CUSTOM_FIELD_RISCO = "fc82fac4-449b-4e2e-8c6d-0242f1084667"
 
 
 def run_project_alerts():
@@ -27,7 +39,8 @@ def run_project_alerts():
         "Projetos Externos": LIST_ID_PROJETOS_EXTERNOS,
     }
 
-    totais = {"7_dias": 0, "3_dias": 0, "1_dia": 0, "vencido": 0, "alto_valor": 0}
+    totais = {"7_dias": 0, "3_dias": 0, "1_dia": 0, "vencido": 0,
+              "alto_valor": 0, "risco_alto": 0, "orcamento_excedido": 0}
 
     for list_name, list_id in lists_to_check.items():
         if not list_id:
@@ -54,7 +67,8 @@ def run_project_alerts():
             status = task.get("status", {}).get("status", "").lower()
 
             # --- PRJ-05 e PRJ-04: Alertas de prazo ---
-            if due_date and status not in ("concluido", "concluído", "closed", "complete"):
+            # Status finais reais em Projetos Internos: "finalizado", "paralisado", "encerramento"
+            if due_date and status not in ("finalizado", "paralisado", "encerramento", "concluido", "concluído", "closed", "complete"):
                 due = datetime.fromtimestamp(int(due_date) / 1000)
                 days_until = (due - today).days
 
@@ -99,26 +113,13 @@ def run_project_alerts():
                     client.post_task_comment(
                         task_id,
                         f"PRAZO VENCIDO: Este projeto esta atrasado ha {dias_atrasado} dia(s)! "
-                        f"Vencimento era {due.strftime('%d/%m/%Y')}. Uma task de revisao foi criada."
-                    )
-                    client.create_task(
-                        list_id=list_id,
-                        name=f"REVISAR ATRASO: {task_name}",
-                        description=(
-                            f"Projeto atrasado ha {dias_atrasado} dia(s).\n\n"
-                            f"Acoes necessarias:\n"
-                            f"1. Identificar causa do atraso\n"
-                            f"2. Definir novo prazo realista\n"
-                            f"3. Comunicar stakeholders\n"
-                            f"4. Atualizar status do projeto original"
-                        ),
-                        priority=1,
-                        tags=["revisar", "atrasado"],
+                        f"Vencimento era {due.strftime('%d/%m/%Y')}. Acao imediata necessaria."
                     )
                     totais["vencido"] += 1
 
-            # --- PRJ-07: Valor > R$50k ---
             custom_fields = {f["id"]: f for f in task.get("custom_fields", [])}
+
+            # --- PRJ-07: Valor > R$50k ---
             valor_field = custom_fields.get(CUSTOM_FIELD_VALOR)
             if valor_field and valor_field.get("value"):
                 try:
@@ -134,14 +135,68 @@ def run_project_alerts():
                 except (ValueError, TypeError):
                     pass
 
+            # --- PRJ-06: Risco Alto ou Critico ---
+            # Risco dropdown: 0=Baixo, 1=Medio, 2=Alto, 3=Critico
+            risco_field = custom_fields.get(CUSTOM_FIELD_RISCO)
+            if risco_field and risco_field.get("value") is not None:
+                try:
+                    risco_idx = int(risco_field["value"])
+                    risco_label = {0: "Baixo", 1: "Medio", 2: "Alto", 3: "Critico"}.get(risco_idx, "")
+                    if risco_idx >= 2 and "risco-alto-notificado" not in current_tags:
+                        print(f"  [PRJ-06] {task_name} - Risco {risco_label}")
+                        client.add_tag(task_id, "risco-alto-notificado")
+                        client.update_task(task_id, priority=1)
+                        client.post_task_comment(
+                            task_id,
+                            f"RISCO {risco_label.upper()} DETECTADO!\n\n"
+                            f"Acoes necessarias:\n"
+                            f"1. Revisar fatores de risco imediatamente\n"
+                            f"2. Acionar gestor do projeto\n"
+                            f"3. Elaborar plano de mitigacao\n"
+                            f"4. Comunicar stakeholders"
+                        )
+                        totais["risco_alto"] += 1
+                except (ValueError, TypeError):
+                    pass
+
+            # --- PRJ-08: Valor Gasto > Orcamento ---
+            orcamento_field = custom_fields.get(CUSTOM_FIELD_ORCAMENTO)
+            gasto_field = custom_fields.get(CUSTOM_FIELD_VALOR_GASTO)
+            if orcamento_field and gasto_field:
+                try:
+                    orcamento = float(orcamento_field.get("value") or 0)
+                    gasto = float(gasto_field.get("value") or 0)
+                    if orcamento > 0 and gasto > orcamento and "orcamento-excedido" not in current_tags:
+                        excedido = gasto - orcamento
+                        pct = (gasto / orcamento - 1) * 100
+                        print(f"  [PRJ-08] {task_name} - Orcamento excedido em R${excedido:,.2f} ({pct:.1f}%)")
+                        client.add_tag(task_id, "orcamento-excedido")
+                        client.update_task(task_id, priority=1)
+                        client.post_task_comment(
+                            task_id,
+                            f"ORCAMENTO EXCEDIDO!\n\n"
+                            f"Orcamento: R$ {orcamento:,.2f}\n"
+                            f"Valor Gasto: R$ {gasto:,.2f}\n"
+                            f"Excedente: R$ {excedido:,.2f} ({pct:.1f}% acima)\n\n"
+                            f"Acoes necessarias:\n"
+                            f"1. Revisar lancamentos de custos\n"
+                            f"2. Renegociar escopo ou orcamento\n"
+                            f"3. Comunicar cliente/diretoria"
+                        )
+                        totais["orcamento_excedido"] += 1
+                except (ValueError, TypeError):
+                    pass
+
     print(f"\n{'='*60}")
     print("RESUMO - PROJECT ALERTS")
     print(f"{'='*60}")
-    print(f"Alertas 7 dias:  {totais['7_dias']}")
-    print(f"Alertas 3 dias:  {totais['3_dias']}")
-    print(f"Alertas 1 dia:   {totais['1_dia']}")
-    print(f"Projetos vencidos: {totais['vencido']}")
-    print(f"Alto valor:      {totais['alto_valor']}")
+    print(f"Alertas 7 dias:       {totais['7_dias']}")
+    print(f"Alertas 3 dias:       {totais['3_dias']}")
+    print(f"Alertas 1 dia:        {totais['1_dia']}")
+    print(f"Projetos vencidos:    {totais['vencido']}")
+    print(f"Alto valor:           {totais['alto_valor']}")
+    print(f"Risco alto/critico:   {totais['risco_alto']}")
+    print(f"Orcamento excedido:   {totais['orcamento_excedido']}")
     total = sum(totais.values())
     if total == 0:
         print("Nenhum alerta necessario no momento.")

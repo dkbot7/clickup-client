@@ -3,17 +3,26 @@ Automação: Workflow Automations (Polling a cada 30 min)
 Executa: A cada 30 minutos (via GitHub Actions)
 
 Automações implementadas:
-- PRJ-01: Checklist "Testes e Validacao" 100% → Status monitoramento
-- PRJ-02: Checklist progresso → Tag de fase
+- PRJ-01: Checklist "Testes e Validação" 100% → Tag testes-concluidos + comentário
+- PRJ-02: Checklist progresso → Tag de fase (iniciacao/execucao/revisao/entrega)
 - PRJ-03: Gestor de Projetos preenchido → Auto-assign
 - TAG-01: Tag "urgente" → Prioridade Urgente
 - TAG-02: Tag "interno" → Valor = 0
-- TAG-03: Tag "bloqueado" → Task de desbloqueio
+- TAG-03: Tag "bloqueado" → Comentário de alerta + tag desbloqueio-notificado
 - TAG-04: Tag "aprovado" → Comentario de proxima fase
-- WKF-01: Status "concluido" → Comentario de celebracao
-- WKF-02: Status "em andamento" → Notificar assignees
-- WKF-03: Checklist "Planejamento Estrategico" 100% → Tag
-- COM-03: Status "Negocio Fechado" → Task de onboarding
+- WKF-01: Status "finalizado" → Comentario de celebracao
+- WKF-02: Status "execução" → Notificar assignees
+- WKF-03: Checklist contendo "Planejamento" 100% → Tag planejamento-completo
+- COM-03: Status "negócio fechado" → Comentario de onboarding + tag
+
+Status reais confirmados via API (2025):
+  Projetos Internos: backlog | iniciação | planejamento | execução |
+                     monitoramento | encerramento | paralisado | finalizado
+  Sessão Estratégica: oportunidade | em qualificação | reunião agendada |
+                      no-show | em reunião | followup | perdido |
+                      desqualificado | negócio fechado
+  Agenda Comercial: novo | pre analise pendente | lead qualificado |
+                    reunião/visita agendada | venda concluida | perdido/não qualificado
 """
 from src.clickup_api.client import KaloiClickUpClient
 from datetime import datetime
@@ -49,10 +58,15 @@ def get_checklist_progress(task):
     return int((resolved / total) * 100)
 
 
-def get_checklist_completion(task, checklist_name):
-    """Verifica se um checklist especifico esta 100% completo."""
+def get_checklist_completion(task, checklist_name_fragment):
+    """Verifica se um checklist que CONTÉM o fragmento no nome esta 100% completo.
+
+    Usa busca parcial pois nomes reais incluem emojis e prefixos numerados,
+    ex: '⏳ 9. Testes e Validação' é localizado por fragmento 'Testes e Validação'.
+    """
     for checklist in task.get("checklists", []):
-        if checklist.get("name", "").strip() == checklist_name:
+        name = checklist.get("name", "").strip()
+        if checklist_name_fragment.lower() in name.lower():
             items = checklist.get("items", [])
             if not items:
                 return False
@@ -104,8 +118,9 @@ def run_workflow_automations():
             assignees = [a["id"] for a in task.get("assignees", [])]
             custom_fields = {f["id"]: f for f in task.get("custom_fields", [])}
 
-            # --- PRJ-01: Checklist "Testes e Validacao" 100% → Status monitoramento ---
-            if get_checklist_completion(task, "Testes e Validacao") and "testes-concluidos" not in current_tags:
+            # --- PRJ-01: Checklist "Testes e Validação" 100% → Status monitoramento ---
+            # Nome real: "⏳ 9. Testes e Validação" — busca por fragmento
+            if get_checklist_completion(task, "Testes e Validação") and "testes-concluidos" not in current_tags:
                 print(f"  [PRJ-01] {task_name} - Testes 100% completos")
                 client.add_tag(task_id, "testes-concluidos")
                 client.post_task_comment(
@@ -183,25 +198,19 @@ def run_workflow_automations():
                     )
                     totais["tag02"] += 1
 
-            # --- TAG-03: Tag "bloqueado" → Task de desbloqueio ---
-            if "bloqueado" in current_tags and "desbloqueio-criado" not in current_tags:
-                print(f"  [TAG-03] {task_name} - Tag bloqueado → criando task de desbloqueio")
-                client.create_task(
-                    list_id=list_id,
-                    name=f"DESBLOQUEAR: {task_name}",
-                    description=(
-                        f"Task bloqueada identificada: {task_name}\n\n"
-                        f"Acoes necessarias:\n"
-                        f"1. Identificar a causa do bloqueio\n"
-                        f"2. Definir responsavel pela resolucao\n"
-                        f"3. Estimar prazo\n"
-                        f"4. Remover tag 'bloqueado' ao resolver"
-                    ),
-                    priority=2,
-                    tags=["desbloqueio", "impedimento"],
+            # --- TAG-03: Tag "bloqueado" → Comentário de alerta ---
+            if "bloqueado" in current_tags and "desbloqueio-notificado" not in current_tags:
+                print(f"  [TAG-03] {task_name} - Tag bloqueado → notificando")
+                client.add_tag(task_id, "desbloqueio-notificado")
+                client.post_task_comment(
+                    task_id,
+                    f"BLOQUEIO IDENTIFICADO: Esta task esta bloqueada.\n\n"
+                    f"Acoes necessarias:\n"
+                    f"1. Identificar a causa do bloqueio\n"
+                    f"2. Definir responsavel pela resolucao\n"
+                    f"3. Estimar prazo\n"
+                    f"4. Remover tag 'bloqueado' ao resolver"
                 )
-                client.add_tag(task_id, "desbloqueio-criado")
-                client.post_task_comment(task_id, "Task de desbloqueio criada automaticamente.")
                 totais["tag03"] += 1
 
             # --- TAG-04: Tag "aprovado" → Comentario ---
@@ -211,22 +220,25 @@ def run_workflow_automations():
                 client.post_task_comment(task_id, "Aprovado! Mover para a proxima fase do workflow.")
                 totais["tag04"] += 1
 
-            # --- WKF-01: Status "concluido" → Celebracao ---
-            if status in ("concluido", "concluído", "complete", "closed") and "celebracao-enviada" not in current_tags:
+            # --- WKF-01: Status "finalizado" → Celebracao ---
+            # Status real em Projetos Internos: "finalizado"
+            if status in ("finalizado", "concluido", "concluído", "complete", "closed") and "celebracao-enviada" not in current_tags:
                 print(f"  [WKF-01] {task_name} - Concluido, celebrando!")
                 client.add_tag(task_id, "celebracao-enviada")
                 client.post_task_comment(task_id, "Task concluida! Otimo trabalho.")
                 totais["wkf01"] += 1
 
-            # --- WKF-02: Status "em andamento" → Notificar ---
-            if status in ("em andamento", "in progress") and "inicio-notificado" not in current_tags:
+            # --- WKF-02: Status "execução" → Notificar ---
+            # Status real em Projetos Internos: "execução"
+            if status in ("execução", "execucao", "em andamento", "in progress") and "inicio-notificado" not in current_tags:
                 print(f"  [WKF-02] {task_name} - Em andamento, notificando")
                 client.add_tag(task_id, "inicio-notificado")
                 client.post_task_comment(task_id, "Execucao iniciada! Responsaveis notificados.")
                 totais["wkf02"] += 1
 
-            # --- WKF-03: Checklist "Planejamento Estrategico" 100% → Tag ---
-            if get_checklist_completion(task, "Planejamento Estrategico") and "planejamento-completo" not in current_tags:
+            # --- WKF-03: Checklist "Planejamento" 100% → Tag ---
+            # Sem nome padronizado — busca qualquer checklist com "Planejamento" no nome
+            if get_checklist_completion(task, "Planejamento") and "planejamento-completo" not in current_tags:
                 print(f"  [WKF-03] {task_name} - Planejamento 100%")
                 client.add_tag(task_id, "planejamento-completo")
                 client.post_task_comment(task_id, "Planejamento Estrategico concluido! Pronto para execucao.")
@@ -254,26 +266,20 @@ def run_workflow_automations():
             current_tags = [t["name"] for t in task.get("tags", [])]
             status = task.get("status", {}).get("status", "").lower()
 
-            # --- COM-03: Status "Negocio Fechado" → Onboarding ---
-            if status in ("negocio fechado", "negócio fechado", "won", "fechado") and "onboarding-criado" not in current_tags:
-                print(f"  [COM-03] {task_name} - Negocio fechado! Criando onboarding")
-                client.create_task(
-                    list_id=list_id,
-                    name=f"ONBOARDING: {task_name}",
-                    description=(
-                        f"Novo cliente: {task_name}\n\n"
-                        f"Acoes de onboarding:\n"
-                        f"1. Enviar formulario de contrato\n"
-                        f"2. Aguardar preenchimento\n"
-                        f"3. Configurar acesso as ferramentas\n"
-                        f"4. Agendar reuniao de kickoff\n"
-                        f"5. Enviar boas-vindas"
-                    ),
-                    priority=2,
-                    tags=["onboarding", "novo-cliente"],
+            # --- COM-03: Status "negócio fechado" → Tag + Comentário ---
+            # Status real em Sessão Estratégica: "negócio fechado" (type: closed)
+            if status in ("negócio fechado", "negocio fechado") and "onboarding-notificado" not in current_tags:
+                print(f"  [COM-03] {task_name} - Negocio fechado! Notificando onboarding")
+                client.add_tag(task_id, "onboarding-notificado")
+                client.post_task_comment(
+                    task_id,
+                    f"NEGOCIO FECHADO! Iniciar processo de onboarding:\n\n"
+                    f"1. Enviar formulario de contrato\n"
+                    f"2. Aguardar preenchimento\n"
+                    f"3. Configurar acesso as ferramentas\n"
+                    f"4. Agendar reuniao de kickoff\n"
+                    f"5. Enviar boas-vindas"
                 )
-                client.add_tag(task_id, "onboarding-criado")
-                client.post_task_comment(task_id, "Negocio fechado! Task de onboarding criada automaticamente.")
                 totais["com03"] += 1
 
     # ===== RESUMO =====
@@ -285,12 +291,12 @@ def run_workflow_automations():
     print(f"[PRJ-03] Auto-assign gestor:   {totais['prj03']}")
     print(f"[TAG-01] Urgente → prioridade: {totais['tag01']}")
     print(f"[TAG-02] Interno → valor 0:    {totais['tag02']}")
-    print(f"[TAG-03] Bloqueado → tarefa:   {totais['tag03']}")
+    print(f"[TAG-03] Bloqueado → notif.:   {totais['tag03']}")
     print(f"[TAG-04] Aprovado registrado:  {totais['tag04']}")
     print(f"[WKF-01] Concluido celebracao: {totais['wkf01']}")
     print(f"[WKF-02] Em andamento notif.:  {totais['wkf02']}")
     print(f"[WKF-03] Planejamento 100%:    {totais['wkf03']}")
-    print(f"[COM-03] Onboarding criado:    {totais['com03']}")
+    print(f"[COM-03] Onboarding notificado:{totais['com03']}")
     total = sum(totais.values())
     if total == 0:
         print("Nenhuma acao necessaria no momento.")

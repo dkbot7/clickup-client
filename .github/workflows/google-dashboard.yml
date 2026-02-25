@@ -1,13 +1,13 @@
-name: Weekly Reports - Relatorio Financeiro
+name: Google Dashboard - Atualizacao Diaria
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Toda segunda-feira as 9h (UTC-3)
+    - cron: '0 11 * * *'  # Todo dia as 8h (UTC-3)
 
   workflow_dispatch:
 
 jobs:
-  generate-report:
+  update-dashboard:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,19 +24,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Gerar relatorio semanal no Google Sheets
+      - name: Atualizar Google Sheets Dashboard
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
           CLICKUP_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          LIST_ID_PROJETOS_INTERNOS: ${{ secrets.LIST_ID_PROJETOS_INTERNOS }}
+          LIST_ID_PROJETOS_EXTERNOS: ${{ secrets.LIST_ID_PROJETOS_EXTERNOS }}
+          LIST_ID_AGENDA_COMERCIAL: ${{ secrets.LIST_ID_AGENDA_COMERCIAL }}
+          LIST_ID_SESSAO_ESTRATEGICA: ${{ secrets.LIST_ID_SESSAO_ESTRATEGICA }}
           LIST_ID_CONTAS_PAGAR: ${{ secrets.LIST_ID_CONTAS_PAGAR }}
           GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT }}
           GOOGLE_SHEETS_ID_DASHBOARD: ${{ secrets.GOOGLE_SHEETS_ID_DASHBOARD }}
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          python automation/weekly_reports.py
+          python automation/google_dashboard.py
 
       - name: Notificar em caso de erro
         if: failure()
         run: |
-          echo "Erro ao gerar relatorio semanal!"
+          echo "Erro ao atualizar dashboard!"
           echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

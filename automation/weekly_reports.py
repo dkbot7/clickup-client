@@ -1,330 +1,155 @@
 """
-Automação: Relatórios Semanais Automáticos
-Executa: Toda segunda-feira às 9h (via GitHub Actions)
+Automacao: Relatorio Semanal de Contas a Pagar (FIN-06)
+Executa: Toda segunda-feira as 9h (via GitHub Actions)
 
 Funcionalidade:
-- Relatório de contas a pagar (vencimentos da semana)
-- Relatório de reuniões comerciais agendadas
-- Relatório de tasks criadas/concluídas
-- Estatísticas de produtividade
+- Exporta Contas a Pagar para aba "Relatorio Semanal" no Google Sheets
+- Destaca contas vencidas e vencendo nos proximos 7 dias
+- Atualiza aba "Resumo Semanal" com metricas financeiras da semana
 """
-from src.clickup_api.client import KaloiClickUpClient
-from datetime import datetime, timedelta
 import os
+from datetime import datetime
 
+from src.clickup_api.client import KaloiClickUpClient
+from src.google_api.client import get_sheets_service
 
-# IDs do ClickUp (via variáveis de ambiente)
-SPACE_ID_GESTAO_ADM = os.environ.get("SPACE_ID_GESTAO_ADM")
-SPACE_ID_COMERCIAL = os.environ.get("SPACE_ID_COMERCIAL")
-SPACE_ID_PROJETOS = os.environ.get("SPACE_ID_PROJETOS")
-
+SHEETS_ID = os.environ.get("GOOGLE_SHEETS_ID_DASHBOARD", "")
 LIST_ID_CONTAS_PAGAR = os.environ.get("LIST_ID_CONTAS_PAGAR")
-LIST_ID_AGENDA_COMERCIAL = os.environ.get("LIST_ID_AGENDA_COMERCIAL")
-LIST_ID_SESSAO_ESTRATEGICA = os.environ.get("LIST_ID_SESSAO_ESTRATEGICA")
+CF_VALOR = "2aca62aa-12c2-4911-8081-453926e59577"
 
-# List para postar relatórios (criar uma task semanal)
-LIST_ID_RELATORIOS = LIST_ID_CONTAS_PAGAR  # Pode criar uma list específica depois
+
+def get_cf(task, field_id):
+    for f in task.get("custom_fields", []):
+        if f["id"] == field_id:
+            return f.get("value")
+    return None
+
+
+def ts_to_date(ts):
+    if not ts:
+        return ""
+    try:
+        return datetime.fromtimestamp(int(ts) / 1000).strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def days_until(ts):
+    if not ts:
+        return None
+    try:
+        return (datetime.fromtimestamp(int(ts) / 1000) - datetime.now()).days
+    except Exception:
+        return None
+
+
+def ensure_sheet(service, name):
+    meta = service.spreadsheets().get(spreadsheetId=SHEETS_ID).execute()
+    existing = {s["properties"]["title"] for s in meta.get("sheets", [])}
+    if name not in existing:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=SHEETS_ID,
+            body={"requests": [{"addSheet": {"properties": {"title": name}}}]}
+        ).execute()
+        print(f"  Aba '{name}' criada")
+
+
+def clear_and_write(service, sheet_name, headers, rows):
+    service.spreadsheets().values().clear(
+        spreadsheetId=SHEETS_ID, range=f"{sheet_name}!A1:Z10000"
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=SHEETS_ID,
+        range=f"{sheet_name}!A1",
+        valueInputOption="USER_ENTERED",
+        body={"values": [headers] + rows},
+    ).execute()
+    print(f"  Aba '{sheet_name}': {len(rows)} linha(s) escritas")
 
 
 def generate_weekly_report():
-    """
-    Gera relatório semanal completo do workspace
-
-    Seções:
-    1. Contas a Pagar (próximos 7 dias)
-    2. Reuniões Comerciais agendadas
-    3. Tasks criadas vs concluídas
-    4. Produtividade por Space
-    """
+    if not SHEETS_ID:
+        print("GOOGLE_SHEETS_ID_DASHBOARD nao configurado")
+        return
 
     client = KaloiClickUpClient()
-
-    print("=" * 70)
-    print("GERANDO RELATÓRIO SEMANAL - ClickUp Workspace")
-    print("=" * 70)
-    print()
-
-    # Definir período do relatório
+    service = get_sheets_service()
     today = datetime.now()
-    week_start = today
-    week_end = today + timedelta(days=7)
+    today_str = today.strftime("%d/%m/%Y %H:%M")
+    semana_str = today.strftime("%d/%m/%Y")
 
-    print(f"Período: {week_start.strftime('%d/%m/%Y')} - {week_end.strftime('%d/%m/%Y')}")
-    print()
+    print("=" * 60)
+    print(f"RELATORIO SEMANAL - {semana_str}")
+    print("=" * 60)
 
-    # ===== SEÇÃO 1: CONTAS A PAGAR =====
-    print("=" * 70)
-    print("1. CONTAS A PAGAR - PRÓXIMOS 7 DIAS")
-    print("=" * 70)
-    print()
+    ensure_sheet(service, "Relatorio Semanal")
+    ensure_sheet(service, "Resumo Semanal")
 
-    contas_pagar = client.get_tasks(
-        LIST_ID_CONTAS_PAGAR,
-        paginate=True,
-        arquivada=False,
-        incluir_fechadas=False
-    )
+    tasks = client.get_tasks(LIST_ID_CONTAS_PAGAR, paginate=True,
+                             arquivada=False, incluir_fechadas=False)
+    print(f"\n{len(tasks)} conta(s) encontrada(s)")
 
-    contas_vencendo = []
-    contas_vencidas = []
-    total_valor = 0
+    headers = ["Conta", "Valor (R$)", "Vencimento", "Dias ate Vencer",
+               "Situacao", "Status ClickUp", "Gerado em"]
+    rows = []
+    total_valor = 0.0
+    count_vencidas = count_vencendo_7d = count_ok = 0
+    valor_vencidas = valor_vencendo = 0.0
 
-    for task in contas_pagar:
-        due_date = task.get('due_date')
-        if not due_date:
-            continue
+    for task in tasks:
+        valor_raw = get_cf(task, CF_VALOR)
+        valor = float(valor_raw) if valor_raw else 0.0
+        total_valor += valor
+        vencimento = ts_to_date(task.get("due_date"))
+        dias = days_until(task.get("due_date"))
+        status = task.get("status", {}).get("status", "")
 
-        due = datetime.fromtimestamp(int(due_date) / 1000)
-        days_until = (due - today).days
+        if dias is None:
+            situacao = "Sem data"
+        elif dias < 0:
+            situacao = f"VENCIDA ({abs(dias)}d atrasada)"
+            count_vencidas += 1
+            valor_vencidas += valor
+        elif dias <= 7:
+            situacao = f"Vence em {dias}d"
+            count_vencendo_7d += 1
+            valor_vencendo += valor
+        else:
+            situacao = f"OK ({dias}d)"
+            count_ok += 1
 
-        # Contas dos próximos 7 dias
-        if 0 <= days_until <= 7:
-            contas_vencendo.append({
-                'nome': task['name'],
-                'vencimento': due,
-                'dias_ate': days_until,
-                'url': task['url']
-            })
+        rows.append([task["name"], f"{valor:,.2f}" if valor else "",
+                     vencimento, dias if dias is not None else "",
+                     situacao, status, today_str])
 
-        # Contas já vencidas
-        elif days_until < 0:
-            contas_vencidas.append({
-                'nome': task['name'],
-                'vencimento': due,
-                'dias_atrasado': abs(days_until),
-                'url': task['url']
-            })
+    rows.sort(key=lambda r: (r[3] if isinstance(r[3], int) else 9999))
+    clear_and_write(service, "Relatorio Semanal", headers, rows)
 
-    print(f"📊 Contas vencendo nos próximos 7 dias: {len(contas_vencendo)}")
-    if contas_vencendo:
-        contas_vencendo.sort(key=lambda x: x['dias_ate'])
-        for conta in contas_vencendo:
-            print(f"   • {conta['nome']}")
-            print(f"     Vence em {conta['dias_ate']} dia(s) - {conta['vencimento'].strftime('%d/%m/%Y')}")
-    else:
-        print("   ✅ Nenhuma conta a vencer")
+    resumo_rows = [
+        ["Total de Contas", len(tasks), semana_str],
+        ["Total a Pagar (R$)", f"{total_valor:,.2f}", semana_str],
+        ["Contas VENCIDAS", count_vencidas, semana_str],
+        ["Valor em Atraso (R$)", f"{valor_vencidas:,.2f}", semana_str],
+        ["Vencendo em 7 dias", count_vencendo_7d, semana_str],
+        ["Valor vencendo (R$)", f"{valor_vencendo:,.2f}", semana_str],
+        ["Contas em dia", count_ok, semana_str],
+    ]
+    clear_and_write(service, "Resumo Semanal",
+                    ["Metrica", "Valor", "Semana de"], resumo_rows)
 
-    print()
-    print(f"🔴 Contas VENCIDAS: {len(contas_vencidas)}")
-    if contas_vencidas:
-        contas_vencidas.sort(key=lambda x: x['dias_atrasado'], reverse=True)
-        for conta in contas_vencidas:
-            print(f"   • {conta['nome']}")
-            print(f"     ATRASADO {conta['dias_atrasado']} dia(s) - Venceu {conta['vencimento'].strftime('%d/%m/%Y')}")
-    else:
-        print("   ✅ Nenhuma conta atrasada")
-
-    print()
-
-    # ===== SEÇÃO 2: REUNIÕES COMERCIAIS =====
-    print("=" * 70)
-    print("2. REUNIÕES COMERCIAIS - PRÓXIMOS 7 DIAS")
-    print("=" * 70)
-    print()
-
-    # Agenda Comercial
-    agenda_comercial = client.get_tasks(
-        LIST_ID_AGENDA_COMERCIAL,
-        paginate=True,
-        arquivada=False,
-        incluir_fechadas=False
-    )
-
-    # Sessão Estratégica
-    sessao_estrategica = client.get_tasks(
-        LIST_ID_SESSAO_ESTRATEGICA,
-        paginate=True,
-        arquivada=False,
-        incluir_fechadas=False
-    )
-
-    todas_reunioes = []
-
-    for task in agenda_comercial + sessao_estrategica:
-        # Buscar custom field "Agendamento"
-        custom_fields = {
-            field['id']: field for field in task.get('custom_fields', [])
-        }
-
-        agendamento_field = custom_fields.get("YOUR_CUSTOM_FIELD_AGENDAMENTO")
-        if not agendamento_field or not agendamento_field.get('value'):
-            continue
-
-        agendamento_ts = int(agendamento_field['value'])
-        meeting_time = datetime.fromtimestamp(agendamento_ts / 1000)
-
-        # Reuniões dos próximos 7 dias
-        hours_until = (meeting_time - today).total_seconds() / 3600
-        if 0 <= hours_until <= 168:  # 7 dias = 168 horas
-            todas_reunioes.append({
-                'nome': task['name'],
-                'data': meeting_time,
-                'tipo': 'Agenda Comercial' if task['list']['id'] == LIST_ID_AGENDA_COMERCIAL else 'Sessão Estratégica'
-            })
-
-    print(f"📅 Reuniões agendadas: {len(todas_reunioes)}")
-    if todas_reunioes:
-        todas_reunioes.sort(key=lambda x: x['data'])
-        for reuniao in todas_reunioes:
-            print(f"   • {reuniao['nome']}")
-            print(f"     {reuniao['data'].strftime('%d/%m/%Y às %H:%M')} - {reuniao['tipo']}")
-    else:
-        print("   📭 Nenhuma reunião agendada")
-
-    print()
-
-    # ===== SEÇÃO 3: PRODUTIVIDADE GERAL =====
-    print("=" * 70)
-    print("3. PRODUTIVIDADE - ÚLTIMOS 7 DIAS")
-    print("=" * 70)
-    print()
-
-    # Definir data de início (7 dias atrás)
-    past_week_start = today - timedelta(days=7)
-    past_week_start_ts = int(past_week_start.timestamp() * 1000)
-
-    spaces = {
-        "Gestão Administrativa": SPACE_ID_GESTAO_ADM,
-        "Comercial": SPACE_ID_COMERCIAL,
-        "Projetos": SPACE_ID_PROJETOS
-    }
-
-    total_criadas = 0
-    total_concluidas = 0
-
-    for space_name, space_id in spaces.items():
-        print(f"📂 {space_name}")
-
-        # Buscar space completo
-        space_data = client.get_space(space_id)
-
-        # Iterar por todas as lists do space
-        criadas = 0
-        concluidas = 0
-
-        # Obter todas as tasks do space (via cada folder/list)
-        try:
-            # Buscar folders do space
-            folders = client.get_folders(space_id)
-
-            for folder in folders:
-                folder_id = folder['id']
-
-                # Buscar lists de cada folder
-                lists = client.get_lists(folder_id)
-
-                for list_obj in lists:
-                    list_id = list_obj['id']
-
-                    # Tasks da list
-                    tasks = client.get_tasks(
-                        list_id,
-                        paginate=True,
-                        arquivada=False
-                    )
-
-                    for task in tasks:
-                        # Contar tasks criadas nos últimos 7 dias
-                        date_created = int(task.get('date_created', 0))
-                        if date_created >= past_week_start_ts:
-                            criadas += 1
-
-                        # Contar tasks concluídas nos últimos 7 dias
-                        if task.get('status', {}).get('status') == 'closed':
-                            date_closed = int(task.get('date_closed', 0))
-                            if date_closed >= past_week_start_ts:
-                                concluidas += 1
-
-        except Exception as e:
-            print(f"   ⚠️ Erro ao buscar tasks: {e}")
-            continue
-
-        print(f"   ✅ Tasks criadas: {criadas}")
-        print(f"   ✅ Tasks concluídas: {concluidas}")
-
-        if criadas > 0:
-            taxa_conclusao = (concluidas / criadas) * 100
-            print(f"   📊 Taxa de conclusão: {taxa_conclusao:.1f}%")
-
-        print()
-
-        total_criadas += criadas
-        total_concluidas += concluidas
-
-    print("=" * 70)
-    print("RESUMO TOTAL")
-    print("=" * 70)
-    print(f"📝 Total de tasks criadas: {total_criadas}")
-    print(f"✅ Total de tasks concluídas: {total_concluidas}")
-
-    if total_criadas > 0:
-        taxa_total = (total_concluidas / total_criadas) * 100
-        print(f"📊 Taxa de conclusão geral: {taxa_total:.1f}%")
-
-    print()
-
-    # ===== CRIAR TASK DE RELATÓRIO =====
-    print("=" * 70)
-    print("SALVANDO RELATÓRIO NO CLICKUP")
-    print("=" * 70)
-    print()
-
-    # Montar descrição do relatório
-    relatorio_md = f"""# Relatório Semanal - {today.strftime('%d/%m/%Y')}
-
-## 📊 Contas a Pagar
-
-**Vencendo nos próximos 7 dias:** {len(contas_vencendo)}
-"""
-
-    if contas_vencendo:
-        relatorio_md += "\n### Vencimentos próximos:\n"
-        for conta in contas_vencendo:
-            relatorio_md += f"- **{conta['nome']}** - Vence em {conta['dias_ate']} dia(s) ({conta['vencimento'].strftime('%d/%m/%Y')})\n"
-
-    if contas_vencidas:
-        relatorio_md += f"\n**🔴 ATENÇÃO:** {len(contas_vencidas)} conta(s) VENCIDA(S)\n"
-        for conta in contas_vencidas:
-            relatorio_md += f"- **{conta['nome']}** - ATRASADO {conta['dias_atrasado']} dia(s)\n"
-
-    relatorio_md += f"\n## 📅 Reuniões Comerciais\n\n**Agendadas para os próximos 7 dias:** {len(todas_reunioes)}\n"
-
-    if todas_reunioes:
-        relatorio_md += "\n"
-        for reuniao in todas_reunioes:
-            relatorio_md += f"- **{reuniao['nome']}** - {reuniao['data'].strftime('%d/%m/%Y às %H:%M')} ({reuniao['tipo']})\n"
-
-    relatorio_md += f"\n## 📈 Produtividade (últimos 7 dias)\n\n"
-    relatorio_md += f"- Tasks criadas: **{total_criadas}**\n"
-    relatorio_md += f"- Tasks concluídas: **{total_concluidas}**\n"
-
-    if total_criadas > 0:
-        taxa_total = (total_concluidas / total_criadas) * 100
-        relatorio_md += f"- Taxa de conclusão: **{taxa_total:.1f}%**\n"
-
-    relatorio_md += f"\n---\n*Relatório gerado automaticamente em {today.strftime('%d/%m/%Y às %H:%M')}*"
-
-    # Criar task de relatório
-    try:
-        client.create_task(
-            list_id=LIST_ID_RELATORIOS,
-            name=f"📊 Relatório Semanal - {today.strftime('%d/%m/%Y')}",
-            description=relatorio_md,
-            priority=3,  # Normal
-            tags=['relatorio', 'automacao']
-        )
-        print("✅ Relatório salvo no ClickUp como task!")
-    except Exception as e:
-        print(f"❌ Erro ao criar task de relatório: {e}")
-
-    print()
+    print(f"\nTotal de contas:    {len(tasks)}")
+    print(f"Total a pagar:      R$ {total_valor:,.2f}")
+    print(f"Contas vencidas:    {count_vencidas} (R$ {valor_vencidas:,.2f})")
+    print(f"Vencendo em 7d:     {count_vencendo_7d} (R$ {valor_vencendo:,.2f})")
+    print(f"Contas em dia:      {count_ok}")
 
 
 if __name__ == "__main__":
     try:
         generate_weekly_report()
-        print("✅ Relatório semanal gerado com sucesso!")
+        print("\nConcluido com sucesso!")
     except Exception as e:
-        print(f"❌ Erro ao gerar relatório: {e}")
+        print(f"Erro: {e}")
         import traceback
         traceback.print_exc()
+        raise

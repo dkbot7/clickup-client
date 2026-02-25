@@ -6,7 +6,7 @@ Funcionalidade:
 - Alerta 7 dias antes do vencimento
 - Alerta 3 dias antes (urgente)
 - Alerta 1 dia antes (muito urgente)
-- Alerta vencido (criar task de revisão)
+- Alerta vencido (tag "atrasado" + prioridade urgente)
 """
 from src.clickup_api.client import KaloiClickUpClient
 from datetime import datetime, timedelta
@@ -26,7 +26,7 @@ def check_overdue_bills():
     - 7 dias antes: Tag 'vencendo-em-breve'
     - 3 dias antes: Tag 'urgente' + comentário
     - 1 dia antes: Tag 'muito-urgente' + comentário
-    - Vencido: Tag 'atrasado' + criar task de revisão
+    - Vencido: Tag 'atrasado' + prioridade urgente + comentário
     """
 
     client = KaloiClickUpClient()
@@ -144,30 +144,15 @@ def check_overdue_bills():
             # Adicionar tag
             client.add_tag(task_id, 'atrasado')
 
+            # Prioridade urgente
+            client.update_task(task_id, priority=1)
+
             # Comentário de atraso
             client.post_task_comment(
                 task_id,
                 f"🔴 **VENCIDO:** Esta conta está atrasada há {dias_atrasado} dia(s)!\n\n"
                 f"Data de vencimento: {due.strftime('%d/%m/%Y')}\n"
-                f"**Possível cobrança de juros e multa.**\n\n"
-                "Uma task de revisão foi criada."
-            )
-
-            # Criar task de revisão
-            client.create_task(
-                list_id=LIST_ID_CONTAS_PAGAR,
-                name=f"🔴 REVISAR: {task_name} (ATRASADO)",
-                description=(
-                    f"Conta vencida há {dias_atrasado} dia(s).\n\n"
-                    f"**Task original:** {task['url']}\n\n"
-                    f"**Ações necessárias:**\n"
-                    f"1. Verificar se foi paga\n"
-                    f"2. Calcular juros/multa\n"
-                    f"3. Providenciar pagamento imediato\n"
-                    f"4. Atualizar status da task original"
-                ),
-                priority=1,  # Urgente
-                tags=['revisar', 'atrasado', 'urgente']
+                f"**Possível cobrança de juros e multa. Ação imediata necessária!**"
             )
 
             alertas_enviados["vencido"] += 1

@@ -42,6 +42,11 @@ env/
 .env.local
 .env.*.local
 
+# Credenciais Google (NUNCA commitar)
+credentials/
+*.json
+!clickup_ids.json
+
 # Logs
 *.log
 logs/
